@@ -1,96 +1,46 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-
-  <meta name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="HackUTD Runner">
-
-  <title>HackUTD Runner</title>
+  <meta name="apple-mobile-web-app-title" content="PoyoDash">
+  <title>PoyoDash!</title>
 
   <style>
-    :root {
-      --bg: #0e1424;
-      --fg: #e8ecf8;
-      --accent: #ff6a3d;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
+    :root { --bg:#0e1424; --fg:#e8ecf8; --accent:#ff6a3d; }
+    * { box-sizing: border-box; }
 
     html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      background: var(--bg);
-      color: var(--fg);
+      margin: 0; width: 100%; height: 100%;
+      background: var(--bg); color: var(--fg);
       font-family: -apple-system, system-ui, sans-serif;
       overscroll-behavior: none;
     }
-
     body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding:
-        env(safe-area-inset-top, 0px)
-        10px
-        env(safe-area-inset-bottom, 0px);
-      touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: env(safe-area-inset-top, 0px) 10px env(safe-area-inset-bottom, 0px);
+      touch-action: none; user-select: none; -webkit-user-select: none;
     }
-
     canvas {
-      display: block;
-      width: 100%;
-      max-width: 900px;
-      max-height: 70dvh;
-      height: auto;
-      aspect-ratio: 8 / 3;
-      object-fit: contain;
-      background: #141c33;
-      border-radius: 8px;
-      image-rendering: pixelated;
+      display: block; width: 100%; max-width: 900px; max-height: 70dvh;
+      height: auto; aspect-ratio: 8 / 3; object-fit: contain;
+      background: #141c33; border-radius: 8px; image-rendering: pixelated;
     }
-
-    .btns {
-      display: flex;
-      gap: 12px;
-      width: 100%;
-      max-width: 900px;
-      margin-top: 10px;
-    }
-
+    .btns { display: flex; gap: 12px; width: 100%; max-width: 900px; margin-top: 10px; }
     .btns button {
-      flex: 1;
-      font-size: 20px;
-      font-weight: 700;
-      padding: 14px 0;
-      border: 0;
-      border-radius: 12px;
-      background: var(--accent);
-      color: white;
+      flex: 1; font-size: 20px; font-weight: 700; padding: 14px 0;
+      border: 0; border-radius: 12px; background: var(--accent); color: white;
       touch-action: none;
     }
-
-    .btns button:active {
-      filter: brightness(0.8);
-    }
+    .btns button:active { filter: brightness(0.8); }
   </style>
 </head>
 
 <body>
-
   <canvas id="c" width="800" height="300"></canvas>
-
   <div class="btns">
     <button id="jumpBtn">JUMP</button>
     <button id="duckBtn">DUCK</button>
@@ -98,108 +48,99 @@
 
   <script>
     // =====================================
-    // CANVAS SETTINGS
+    // CANVAS
     // =====================================
-
     const cv = document.getElementById('c');
     const ctx = cv.getContext('2d');
-
-    const W = 800;
-    const H = 300;
-    const GROUND = 250;
-
+    const W = 800, H = 300, GROUND = 250;
     ctx.imageSmoothingEnabled = false;
 
     // =====================================
-    // SPRITE SETTINGS
+    // SETTINGS YOU WILL TWEAK
     // =====================================
+    const GAME_NAME = 'PoyoDash!';
 
-    const heroRun = new Image();
-    let heroRunOK = false;
+    // Frames in each sprite sheet (frame width is worked out automatically)
+    const RUN_FRAMES        = 8;
+    const JUMP_FRAMES       = 1;   // 1 = single pose
+    const HORNET_FRAMES     = 3;
+    const GROUND_OBS_FRAMES = 6;
 
-    heroRun.onload = () => {
-      heroRunOK = true;
+    // true  = the 6 ground frames are an animation that loops
+    // false = the 6 frames are 6 different obstacles (one is picked at random)
+    const GROUND_OBS_ANIMATED = true;
+
+    const RUN_FRAME_DURATION    = 130;  // ms per run frame (bigger = slower legs)
+    const HORNET_FRAME_DURATION = 120;  // ms per wasp frame
+    const GROUND_FRAME_DURATION = 120;  // ms per ground obstacle frame
+
+    // On-screen sizes (px on the 800x300 canvas)
+    const SPRITE_HEIGHT          = 140; // Poyo's height
+    const HORNET_DRAW_HEIGHT     = 140; // wasp size (bigger number = bigger wasp)
+    const GROUND_OBS_DRAW_HEIGHT = 85;
+    const HORNET_Y_NUDGE         = 30;  // moves the wasp picture UP (bigger = higher)
+
+    // Crouch squish (applied to hero_crouch.png)
+    const CROUCH_SQUASH_Y  = 0.6;  // 1 = no squish, lower = flatter
+    const CROUCH_STRETCH_X = 1.1;  // slightly wider while ducking
+
+    // Poyo box sizes (the hitbox is these sizes MINUS the insets below)
+    const STAND_H = 105, DUCK_H = 65, PLAYER_W = 55;
+
+    // HITBOX SHRINK: pixels trimmed off each side. Bigger number = more forgiving.
+    const PLAYER_INSET = { x: 14, top: 16, bottom: 4 };
+    const OBS_INSET    = { x: 12, top: 10, bottom: 6 };   // ground obstacles
+    const AIR_INSET    = { x: 18, top: 14, bottom: 8 };   // wasp (tighter than before)
+
+    // Press H while playing to show/hide hitboxes (red = Poyo, yellow = obstacles)
+    let showHitboxes = false;
+
+    // Darken the background so sprites stand out (0 = off, 0.5 = quite dark)
+    const BG_DIM = 0.35;
+    const BG_SPEED = 0.3;               // background parallax (lower = farther away)
+
+    // =====================================
+    // ART (missing files are fine: placeholders are used)
+    // =====================================
+    function load(src) { const i = new Image(); i.src = src; return i; }
+    const art = {
+      run:    load('assets/hero_run.png'),
+      jump:   load('assets/hero_jump.png'),
+      crouch: load('assets/hero_crouch.png'),
+      hornet: load('assets/hornet.png'),
+      ground: load('assets/obstacle_ground.png'),
+      bg:     load('assets/city_bg.png'),
     };
-
-    heroRun.src = 'assets/hero_run.png';
-
-    // Running sprite sheet
-    const RUN_FRAMES = 8;
-    const FRAME_WIDTH = 250;
-    const FRAME_HEIGHT = 250;
-    const RUN_FRAME_DURATION = 130;
-
-    // Character display size
-    const SPRITE_WIDTH = 90;
-    const SPRITE_HEIGHT = 90;
-
-    // Temporary crouching appearance
-    const CROUCH_SPRITE_HEIGHT = 45;
-
-    let runAnimationTime = 0;
+    const ready = img => img.complete && img.naturalWidth > 0;
 
     // =====================================
     // GAME VARIABLES
     // =====================================
+    let state, player, obstacles, speed, distance, nextGap, score;
+    let best = 0, lastT = 0;
+    let runAnimationTime = 0, animTime = 0;
 
-    let state;
-    let player;
-    let obstacles;
-    let speed;
-    let distance;
-    let nextGap;
-    let score;
-    let best = 0;
-    let lastT = 0;
-
-    try {
-      best = Number(localStorage.getItem('hutd_best')) || 0;
-    } catch (e) {}
-
-    // =====================================
-    // RESET / START
-    // =====================================
+    try { best = Number(localStorage.getItem('hutd_best')) || 0; } catch (e) {}
 
     function reset() {
-      player = {
-        x: 60,
-        y: GROUND - 50,
-        w: 40,
-        h: 50,
-        vy: 0,
-        ducking: false,
-        onGround: true
-      };
-
+      player = { x: 60, y: GROUND - STAND_H, w: PLAYER_W, h: STAND_H, vy: 0, ducking: false, onGround: true };
       obstacles = [];
-      speed = 6;
-      distance = 0;
-      nextGap = 300;
-      score = 0;
+      speed = 6; distance = 0; nextGap = 300; score = 0;
       runAnimationTime = 0;
     }
-
     state = 'ready';
     reset();
 
     function start() {
-      if (state === 'over') {
-        reset();
-      }
-
+      if (state === 'over') reset();
       state = 'play';
     }
 
     // =====================================
     // CONTROLS
     // =====================================
-
     function jump() {
-      if (state !== 'play') {
-        start();
-        return;
-      }
-
+      if (state !== 'play') { start(); return; }
       if (player.onGround && !player.ducking) {
         player.vy = -13;
         player.onGround = false;
@@ -207,122 +148,82 @@
     }
 
     function duck(on) {
-      if (state === 'play') {
-        player.ducking = on;
-      } else if (!on) {
-        player.ducking = false;
-      }
+      if (state === 'play') player.ducking = on;
+      else if (!on) player.ducking = false;
     }
 
     addEventListener('keydown', e => {
-      if (
-        ['Space', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyS']
-          .includes(e.code)
-      ) {
-        e.preventDefault();
-      }
-
+      if (['Space','ArrowUp','ArrowDown','KeyW','KeyS'].includes(e.code)) e.preventDefault();
+      if (e.code === 'KeyH') { showHitboxes = !showHitboxes; return; }
       if (e.repeat) return;
-
-      if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
-        jump();
-      }
-
-      if (['ArrowDown', 'KeyS'].includes(e.code)) {
-        duck(true);
-      }
+      if (['Space','ArrowUp','KeyW'].includes(e.code)) jump();
+      if (['ArrowDown','KeyS'].includes(e.code)) duck(true);
     });
-
     addEventListener('keyup', e => {
-      if (['ArrowDown', 'KeyS'].includes(e.code)) {
-        duck(false);
-      }
+      if (['ArrowDown','KeyS'].includes(e.code)) duck(false);
     });
 
     const jb = document.getElementById('jumpBtn');
     const db = document.getElementById('duckBtn');
-
-    jb.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      jump();
+    jb.addEventListener('pointerdown', e => { e.preventDefault(); jump(); });
+    db.addEventListener('pointerdown', e => { e.preventDefault(); duck(true); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev => {
+      db.addEventListener(ev, e => { e.preventDefault(); duck(false); });
     });
-
-    db.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      duck(true);
-    });
-
-    ['pointerup', 'pointercancel', 'pointerleave']
-      .forEach(event => {
-        db.addEventListener(event, e => {
-          e.preventDefault();
-          duck(false);
-        });
-      });
-
-    cv.addEventListener('pointerdown', () => {
-      if (state !== 'play') {
-        start();
-      }
-    });
+    cv.addEventListener('pointerdown', () => { if (state !== 'play') start(); });
 
     // =====================================
     // OBSTACLES
     // =====================================
-
     function spawn() {
       if (Math.random() < 0.65) {
-        const emoji = ['🐛', '💥', '⚠️'][
-          Math.floor(Math.random() * 3)
-        ];
-
+        const emoji = ['🐛','💥','⚠️'][Math.floor(Math.random() * 3)];
         obstacles.push({
-          type: 'ground',
-          x: W + 20,
-          y: GROUND - 40,
-          w: 36,
-          h: 40,
-          emoji
+          type: 'ground', x: W + 20, y: GROUND - 65, w: 50, h: 65, emoji,
+          variant: Math.floor(Math.random() * GROUND_OBS_FRAMES)
         });
       } else {
-        const emoji = ['📡', '☁️', '🔥'][
-          Math.floor(Math.random() * 3)
-        ];
-
-        obstacles.push({
-          type: 'air',
-          x: W + 20,
-          y: GROUND - 62,
-          w: 44,
-          h: 25,
-          emoji
-        });
+        // Wasp hitbox reaches into a standing Poyo but stays above a ducking one,
+        // so you have to duck to get under it.
+        const emoji = ['📡','☁️','🔥'][Math.floor(Math.random() * 3)];
+        obstacles.push({ type:'air', x: W + 20, y: GROUND - 125, w: 60, h: 55, emoji });
       }
     }
 
     // =====================================
-    // GAME UPDATE
+    // HITBOXES
     // =====================================
+    function playerBox() {
+      const p = player;
+      return { x: p.x + PLAYER_INSET.x, y: p.y + PLAYER_INSET.top,
+               w: p.w - PLAYER_INSET.x * 2, h: p.h - PLAYER_INSET.top - PLAYER_INSET.bottom };
+    }
+    function obstacleBox(o) {
+      const i = o.type === 'air' ? AIR_INSET : OBS_INSET;
+      return { x: o.x + i.x, y: o.y + i.top,
+               w: o.w - i.x * 2, h: o.h - i.top - i.bottom };
+    }
 
+    // =====================================
+    // UPDATE
+    // =====================================
     function update(dt) {
       if (state !== 'play') return;
 
       speed = Math.min(16, speed + 0.003 * dt);
       distance += speed * dt;
       score = Math.floor(distance / 10);
+      animTime += dt * (1000 / 60);
 
-      // Running animation
       if (player.onGround && !player.ducking) {
         runAnimationTime += dt * (1000 / 60);
       }
 
-      // Character physics
-      player.h = player.ducking && player.onGround ? 28 : 50;
+      player.h = player.ducking && player.onGround ? DUCK_H : STAND_H;
 
       if (!player.onGround) {
         player.vy += 0.7 * dt;
         player.y += player.vy * dt;
-
         if (player.y >= GROUND - player.h) {
           player.y = GROUND - player.h;
           player.vy = 0;
@@ -332,202 +233,195 @@
         player.y = GROUND - player.h;
       }
 
-      // Spawn obstacles
       nextGap -= speed * dt;
-
       if (nextGap <= 0) {
         spawn();
-
-        nextGap =
-          (280 + Math.random() * 260) *
-          (0.8 + speed / 30);
+        nextGap = (300 + Math.random() * 260) * (0.8 + speed / 30);
       }
 
-      // Move obstacles
-      obstacles.forEach(o => {
-        o.x -= speed * dt;
-      });
-
+      obstacles.forEach(o => { o.x -= speed * dt; });
       obstacles = obstacles.filter(o => o.x + o.w > -10);
 
-      // Player collision box
-      const p = {
-        x: player.x + 4,
-        y: player.y + 4,
-        w: player.w - 8,
-        h: player.h - 8
-      };
-
-      // Collision detection
+      const p = playerBox();
       for (const o of obstacles) {
-        if (
-          p.x < o.x + o.w - 4 &&
-          p.x + p.w > o.x + 4 &&
-          p.y < o.y + o.h - 4 &&
-          p.y + p.h > o.y + 4
-        ) {
+        const q = obstacleBox(o);
+        if (p.x < q.x + q.w && p.x + p.w > q.x &&
+            p.y < q.y + q.h && p.y + p.h > q.y) {
           state = 'over';
-
           if (score > best) {
             best = score;
-
-            try {
-              localStorage.setItem('hutd_best', best);
-            } catch (e) {}
+            try { localStorage.setItem('hutd_best', best); } catch (e) {}
           }
-
           break;
         }
       }
     }
 
     // =====================================
-    // DRAW PLAYER
+    // DRAWING
     // =====================================
+
+    // Draw one frame of a sprite sheet, centered on cx, with its bottom at bottomY.
+    function drawFrame(img, frames, frame, cx, bottomY, scale) {
+      const fw = img.naturalWidth / frames;
+      const fh = img.naturalHeight;
+      const dw = fw * scale, dh = fh * scale;
+      ctx.drawImage(img, frame * fw, 0, fw, fh, cx - dw / 2, bottomY - dh, dw, dh);
+    }
+
+    function drawBackground() {
+      if (ready(art.bg)) {
+        const w = art.bg.naturalWidth * (H / art.bg.naturalHeight);
+        const offset = (distance * BG_SPEED) % w;
+        for (let x = -offset; x < W; x += w) ctx.drawImage(art.bg, x, 0, w, H);
+      } else {
+        // placeholder skyline so you can see the scrolling before the art exists
+        const off = distance * BG_SPEED;
+        ctx.fillStyle = '#1d2748';
+        for (let i = -1; i < 12; i++) {
+          const bx = i * 90 - (off % 90);
+          const bh = 60 + ((Math.floor(off / 90) + i + 100) * 37 % 70);
+          ctx.fillRect(bx, GROUND - bh, 70, bh);
+        }
+      }
+      if (BG_DIM > 0) {                        // dim the background only
+        ctx.fillStyle = 'rgba(8, 10, 30, ' + BG_DIM + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
 
     function drawPlayer() {
       const p = player;
 
-      if (heroRunOK) {
-        const frame = Math.floor(
-          runAnimationTime / RUN_FRAME_DURATION
-        ) % RUN_FRAMES;
-
-        const sx = frame * FRAME_WIDTH;
-
-        // Detect crouching
-        const isDucking = p.ducking && p.onGround;
-
-        // Squish character while crouching
-        const drawWidth = SPRITE_WIDTH;
-        const drawHeight = isDucking
-          ? CROUCH_SPRITE_HEIGHT
-          : SPRITE_HEIGHT;
-
-        // Center the sprite over its hitbox
-        const drawX = p.x + (p.w - drawWidth) / 2;
-
-        // Keep feet on the ground
-        const drawY = p.y + p.h - drawHeight;
-
-        ctx.drawImage(
-          heroRun,
-          sx,
-          0,
-          FRAME_WIDTH,
-          FRAME_HEIGHT,
-          drawX,
-          drawY,
-          drawWidth,
-          drawHeight
-        );
-
+      if (!ready(art.run)) {                       // no art yet: orange box
+        ctx.fillStyle = '#ff6a3d';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
         return;
       }
 
-      // Placeholder if sprite fails to load
-      ctx.fillStyle = '#ff6a3d';
-      ctx.fillRect(p.x, p.y, p.w, p.h);
+      const cx = p.x + p.w / 2;
+      const bottom = p.y + p.h;                    // feet on the ground
+      const scale = SPRITE_HEIGHT / art.run.naturalHeight;
+      const runFrame = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % RUN_FRAMES;
+      const isDucking = p.ducking && p.onGround;
+
+      if (!p.onGround) {
+        // JUMP
+        if (ready(art.jump)) {
+          let f = 0;
+          if (JUMP_FRAMES > 1) {
+            const t = (p.vy + 13) / 26;            // 0 = launching, 1 = falling fast
+            f = Math.max(0, Math.min(JUMP_FRAMES - 1, Math.floor(t * JUMP_FRAMES)));
+          }
+          drawFrame(art.jump, JUMP_FRAMES, f, cx, bottom, scale);
+        } else {
+          drawFrame(art.run, RUN_FRAMES, runFrame, cx, bottom, scale);   // fallback
+        }
+      } else if (isDucking) {
+        // CROUCH: squash the sprite so it visibly gets low
+        const img = ready(art.crouch) ? art.crouch : art.run;
+        const frames = ready(art.crouch) ? 1 : RUN_FRAMES;
+        const f = ready(art.crouch) ? 0 : runFrame;
+        const fw = img.naturalWidth / frames, fh = img.naturalHeight;
+        const dw = fw * scale * CROUCH_STRETCH_X;
+        const dh = fh * scale * CROUCH_SQUASH_Y;
+        ctx.drawImage(img, f * fw, 0, fw, fh, cx - dw / 2, bottom - dh, dw, dh);
+      } else {
+        // RUN
+        drawFrame(art.run, RUN_FRAMES, runFrame, cx, bottom, scale);
+      }
     }
 
-    // =====================================
-    // DRAW GAME
-    // =====================================
+    function drawObstacle(o) {
+      const cx = o.x + o.w / 2;
+
+      if (o.type === 'air' && ready(art.hornet)) {
+        const f = Math.floor(animTime / HORNET_FRAME_DURATION) % HORNET_FRAMES;
+        const midY = o.y + o.h / 2 - HORNET_Y_NUDGE;   // centered on hitbox, nudged up
+        const scale = HORNET_DRAW_HEIGHT / art.hornet.naturalHeight;
+        drawFrame(art.hornet, HORNET_FRAMES, f, cx, midY + HORNET_DRAW_HEIGHT / 2, scale);
+        return;
+      }
+      if (o.type === 'ground' && ready(art.ground)) {
+        const f = GROUND_OBS_ANIMATED
+          ? Math.floor(animTime / GROUND_FRAME_DURATION) % GROUND_OBS_FRAMES
+          : o.variant;
+        const scale = GROUND_OBS_DRAW_HEIGHT / art.ground.naturalHeight;
+        drawFrame(art.ground, GROUND_OBS_FRAMES, f, cx, GROUND, scale);
+        return;
+      }
+      // emoji fallback
+      ctx.font = '46px serif';
+      ctx.textBaseline = 'bottom';
+      ctx.textAlign = 'left';
+      ctx.fillText(o.emoji, o.x, o.y + o.h + 4);
+    }
+
+    function drawHitboxes() {
+      ctx.lineWidth = 2;
+      const p = playerBox();
+      ctx.strokeStyle = 'red';
+      ctx.strokeRect(p.x, p.y, p.w, p.h);
+      ctx.strokeStyle = 'yellow';
+      obstacles.forEach(o => {
+        const q = obstacleBox(o);
+        ctx.strokeRect(q.x, q.y, q.w, q.h);
+      });
+    }
 
     function draw() {
       ctx.clearRect(0, 0, W, H);
+      drawBackground();
 
-      // Ground
+      // ground line
       ctx.strokeStyle = '#3b4a7a';
       ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(W, GROUND); ctx.stroke();
 
-      ctx.beginPath();
-      ctx.moveTo(0, GROUND);
-      ctx.lineTo(W, GROUND);
-      ctx.stroke();
-
-      // Scrolling ground details
+      // scrolling ground details
       ctx.fillStyle = '#3b4a7a';
-
       for (let i = 0; i < 20; i++) {
         const x = ((i * 60 - distance) % W + W) % W;
         ctx.fillRect(x, GROUND + 8, 20, 2);
       }
 
-      // Draw character
       drawPlayer();
+      obstacles.forEach(drawObstacle);
+      if (showHitboxes) drawHitboxes();
 
-      // Draw obstacles
-      ctx.font = '34px serif';
-      ctx.textBaseline = 'bottom';
-      ctx.textAlign = 'left';
-
-      obstacles.forEach(o => {
-        ctx.fillText(o.emoji, o.x, o.y + o.h + 4);
-      });
-
-      // Score display
+      // score
       ctx.fillStyle = '#e8ecf8';
       ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'alphabetic';
+      ctx.fillText('HI ' + String(best).padStart(5, '0') + '  ' + String(score).padStart(5, '0'), W - 12, 28);
 
-      ctx.fillText(
-        'HI ' + String(best).padStart(5, '0') +
-        '  ' + String(score).padStart(5, '0'),
-        W - 12,
-        28
-      );
-
-      // Ready screen
       ctx.textAlign = 'center';
-
       if (state === 'ready') {
-        ctx.font = 'bold 28px sans-serif';
-        ctx.fillText('HackUTD Runner', W / 2, 110);
-
+        ctx.font = 'bold 30px sans-serif';
+        ctx.fillText(GAME_NAME, W / 2, 110);
         ctx.font = '18px sans-serif';
-        ctx.fillText(
-          'Press JUMP / Space to start',
-          W / 2,
-          145
-        );
+        ctx.fillText('Press JUMP / Space to start', W / 2, 145);
       }
-
-      // Game over screen
       if (state === 'over') {
         ctx.font = 'bold 34px sans-serif';
         ctx.fillText('GAME OVER', W / 2, 110);
-
         ctx.font = '18px sans-serif';
-        ctx.fillText(
-          'Score ' + score + ' — press JUMP to restart',
-          W / 2,
-          145
-        );
+        ctx.fillText('Score ' + score + ' — press JUMP to restart', W / 2, 145);
       }
     }
 
     // =====================================
-    // MAIN GAME LOOP
+    // MAIN LOOP
     // =====================================
-
     function loop(t) {
-      const dt = Math.min(
-        (t - lastT) / 16.67 || 1,
-        3
-      );
-
+      const dt = Math.min((t - lastT) / 16.67 || 1, 3);
       lastT = t;
-
       update(dt);
       draw();
-
       requestAnimationFrame(loop);
     }
-
     requestAnimationFrame(loop);
   </script>
-
 </body>
 </html>
