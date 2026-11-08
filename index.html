@@ -90,7 +90,21 @@
     // HITBOX SHRINK: pixels trimmed off each side. Bigger number = more forgiving.
     const PLAYER_INSET = { x: 14, top: 16, bottom: 4 };
     const OBS_INSET    = { x: 12, top: 10, bottom: 6 };   // ground obstacles
-    const AIR_INSET    = { x: 18, top: 14, bottom: 8 };   // wasp (tighter than before)
+    const AIR_INSET    = { x: 18, top: 14, bottom: 8 };   // wasp
+
+    // ----- TITLE SCREEN -----
+    // The WHOLE logo.png is drawn (no cropping), so nothing can be cut off.
+    const LOGO_W = 560;            // width of the whole image on screen (artwork is ~85% of this)
+    const LOGO_CENTER_Y = 105;     // where the artwork's middle sits (0 = top of canvas, 300 = bottom)
+    const LOGO_ART_CENTER = 0.49;  // where the artwork's middle is inside logo.png (0 = top edge, 1 = bottom edge)
+
+    // true = black pixels in the logo vanish (for a logo on a black background).
+    // If your logo has a transparent background, set this to false.
+    const LOGO_BLEND_SCREEN = true;
+
+    const TITLE_POYO_H = 90;        // size of the little running Poyo
+    const TITLE_POYO_X = 70;        // his horizontal position (center)
+    const TITLE_SCROLL_SPEED = 1.2; // how fast the title background drifts
 
     // Press H while playing to show/hide hitboxes (red = Poyo, yellow = obstacles)
     let showHitboxes = false;
@@ -110,6 +124,7 @@
       hornet: load('assets/hornet.png'),
       ground: load('assets/obstacle_ground.png'),
       bg:     load('assets/city_bg.png'),
+      logo:   load('assets/logo.png'),
     };
     const ready = img => img.complete && img.naturalWidth > 0;
 
@@ -119,6 +134,7 @@
     let state, player, obstacles, speed, distance, nextGap, score;
     let best = 0, lastT = 0;
     let runAnimationTime = 0, animTime = 0;
+    let scrollPos = 0;   // visual scroll for background + ground (never resets, so no snapping)
 
     try { best = Number(localStorage.getItem('hutd_best')) || 0; } catch (e) {}
 
@@ -208,10 +224,17 @@
     // UPDATE
     // =====================================
     function update(dt) {
+      // Title screen: background drifts and little Poyo runs in place
+      if (state === 'ready') {
+        scrollPos += TITLE_SCROLL_SPEED * dt;
+        runAnimationTime += dt * (1000 / 60);
+        return;
+      }
       if (state !== 'play') return;
 
       speed = Math.min(16, speed + 0.003 * dt);
       distance += speed * dt;
+      scrollPos += speed * dt;
       score = Math.floor(distance / 10);
       animTime += dt * (1000 / 60);
 
@@ -272,11 +295,11 @@
     function drawBackground() {
       if (ready(art.bg)) {
         const w = art.bg.naturalWidth * (H / art.bg.naturalHeight);
-        const offset = (distance * BG_SPEED) % w;
+        const offset = (scrollPos * BG_SPEED) % w;
         for (let x = -offset; x < W; x += w) ctx.drawImage(art.bg, x, 0, w, H);
       } else {
         // placeholder skyline so you can see the scrolling before the art exists
-        const off = distance * BG_SPEED;
+        const off = scrollPos * BG_SPEED;
         ctx.fillStyle = '#1d2748';
         for (let i = -1; i < 12; i++) {
           const bx = i * 90 - (off % 90);
@@ -369,9 +392,63 @@
       });
     }
 
+    // ----- Title screen pieces -----
+    function drawLogo() {
+      if (!ready(art.logo)) {                      // no logo file: plain text title
+        ctx.fillStyle = '#e8ecf8';
+        ctx.font = 'bold 44px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(GAME_NAME, W / 2, 100);
+        return;
+      }
+      // Draw the WHOLE image (no cropping). Its empty margins are black, so the
+      // screen blend hides them, and anything past the canvas edge is clipped harmlessly.
+      const iw = art.logo.naturalWidth, ih = art.logo.naturalHeight;
+      const dw = LOGO_W, dh = LOGO_W * ih / iw;
+      const y = LOGO_CENTER_Y - dh * LOGO_ART_CENTER;
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;            // smooth when shrinking a big logo
+      if (LOGO_BLEND_SCREEN) ctx.globalCompositeOperation = 'screen';
+      ctx.drawImage(art.logo, (W - dw) / 2, y, dw, dh);
+      ctx.restore();
+    }
+
+    function drawTitlePoyo() {
+      if (!ready(art.run)) return;
+      const scale = TITLE_POYO_H / art.run.naturalHeight;
+      const f = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % RUN_FRAMES;
+      drawFrame(art.run, RUN_FRAMES, f, TITLE_POYO_X, GROUND, scale);
+    }
+
+    function drawTitleText() {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      if (Math.floor(lastT / 500) % 2 === 0) {     // blinking prompt
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px monospace';
+        ctx.fillText('PRESS JUMP TO START', W / 2, 212);
+      }
+      if (best > 0) {
+        ctx.fillStyle = '#c9b8ff';
+        ctx.font = '16px monospace';
+        ctx.fillText('HIGH SCORE ' + String(best).padStart(5, '0'), W / 2, 238);
+      }
+      ctx.fillStyle = 'rgba(232, 236, 248, 0.6)';
+      ctx.font = '13px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('HackUTD', W - 12, H - 10);
+    }
+
     function draw() {
       ctx.clearRect(0, 0, W, H);
       drawBackground();
+
+      if (state === 'ready') {
+        ctx.fillStyle = 'rgba(8, 10, 30, 0.3)';    // extra dim so the logo pops
+        ctx.fillRect(0, 0, W, H);
+      }
 
       // ground line
       ctx.strokeStyle = '#3b4a7a';
@@ -381,8 +458,15 @@
       // scrolling ground details
       ctx.fillStyle = '#3b4a7a';
       for (let i = 0; i < 20; i++) {
-        const x = ((i * 60 - distance) % W + W) % W;
+        const x = ((i * 60 - scrollPos) % W + W) % W;
         ctx.fillRect(x, GROUND + 8, 20, 2);
+      }
+
+      if (state === 'ready') {
+        drawTitlePoyo();
+        drawLogo();
+        drawTitleText();
+        return;
       }
 
       drawPlayer();
@@ -396,14 +480,8 @@
       ctx.textBaseline = 'alphabetic';
       ctx.fillText('HI ' + String(best).padStart(5, '0') + '  ' + String(score).padStart(5, '0'), W - 12, 28);
 
-      ctx.textAlign = 'center';
-      if (state === 'ready') {
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText(GAME_NAME, W / 2, 110);
-        ctx.font = '18px sans-serif';
-        ctx.fillText('Press JUMP / Space to start', W / 2, 145);
-      }
       if (state === 'over') {
+        ctx.textAlign = 'center';
         ctx.font = 'bold 34px sans-serif';
         ctx.fillText('GAME OVER', W / 2, 110);
         ctx.font = '18px sans-serif';
