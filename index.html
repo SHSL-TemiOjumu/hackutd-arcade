@@ -6,157 +6,346 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PoyoDash">
-  <title>PoyoDash!</title>
   <link rel="apple-touch-icon" href="assets/icon.png">
-  <style>
-    :root { --bg:#0e1424; --fg:#e8ecf8; --accent:#ff6a3d; }
-    * { box-sizing: border-box; }
+  <title>PoyoDash!</title>
 
+  <style>
+    :root { --btn: 90px; }
+    * { box-sizing: border-box; }
     html, body {
-      margin: 0; width: 100%; height: 100%;
-      background: var(--bg); color: var(--fg);
+      margin: 0; width: 100%; height: 100%; overflow: hidden;
+      background: #10162b; color: #e8ecf8;
       font-family: -apple-system, system-ui, sans-serif;
-      overscroll-behavior: none;
-    }
-    body {
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      padding: env(safe-area-inset-top, 0px) 10px env(safe-area-inset-bottom, 0px);
-      touch-action: none; user-select: none; -webkit-user-select: none;
+      overscroll-behavior: none; touch-action: none;
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
     }
     canvas {
-      display: block; width: 100%; max-width: 900px; max-height: 70dvh;
-      height: auto; aspect-ratio: 8 / 3; object-fit: contain;
-      background: #141c33; border-radius: 8px; image-rendering: pixelated;
+      position: fixed; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; image-rendering: pixelated;
     }
-    .btns { display: flex; gap: 12px; width: 100%; max-width: 900px; margin-top: 10px; }
-    .btns button {
-      flex: 1; font-size: 20px; font-weight: 700; padding: 14px 0;
-      border: 0; border-radius: 12px; background: var(--accent); color: white;
-      touch-action: none;
+
+    /* ---- Retro arcade buttons (they sit in the ground strip at the bottom) ---- */
+    .arc {
+      position: fixed; padding: 8px; border-radius: 50%;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+      background: #1a1030;
+      box-shadow: 0 4px 0 #0a0618, inset 0 0 0 3px #3a2a66;
     }
-    .btns button:active { filter: brightness(0.8); }
+    #duckWrap { left:  calc(env(safe-area-inset-left,  0px) + 22px); }  /* swap left/right to switch sides */
+    #jumpWrap { right: calc(env(safe-area-inset-right, 0px) + 22px); }
+    .arc button, #backBtn {
+      display: block; border: 0; cursor: pointer;
+      touch-action: none; -webkit-tap-highlight-color: transparent;
+      background-repeat: no-repeat; background-position: center;
+    }
+    .arc button {
+      width: var(--btn); height: var(--btn); border-radius: 50%;
+      font: 800 12px/1 -apple-system, system-ui, sans-serif; letter-spacing: 1px;
+      color: rgba(255,255,255,.92); text-shadow: 0 1px 2px rgba(0,0,0,.5);
+      transition: transform .05s, box-shadow .05s;
+    }
+    #jumpBtn {
+      background-color: #e01e37;
+      background-image: radial-gradient(circle at 35% 28%, #ff9a9a, #e01e37 55%, #8f0f22);
+      box-shadow: 0 7px 0 #5c0a16, 0 10px 12px rgba(0,0,0,.5);
+    }
+    #duckBtn {
+      background-color: #1e88e5;
+      background-image: radial-gradient(circle at 35% 28%, #9fe0ff, #1e88e5 55%, #0d3c8f);
+      box-shadow: 0 7px 0 #0a2a66, 0 10px 12px rgba(0,0,0,.5);
+    }
+    .arc button.down { transform: translateY(5px); }
+    #jumpBtn.down { box-shadow: 0 2px 0 #5c0a16, 0 3px 6px rgba(0,0,0,.5); }
+    #duckBtn.down { box-shadow: 0 2px 0 #0a2a66, 0 3px 6px rgba(0,0,0,.5); }
+
+    /* When your PNG buttons exist, these rules switch the buttons to image mode */
+    .arc.img { background: none !important; box-shadow: none !important; padding: 0; }
+    .arc button.img {
+      background-color: transparent !important; box-shadow: none !important; border-radius: 0;
+      background-size: contain; font-size: 0; text-shadow: none;
+      image-rendering: pixelated;
+    }
+    .arc button.img.down { transform: translateY(3px); }
+
+    /* ---- Home button (top-left; hidden on the title screen, shown everywhere else) ---- */
+    #backBtn {
+      display: none; position: fixed; z-index: 20;
+      top: calc(env(safe-area-inset-top, 0px) + 12px);
+      left: calc(env(safe-area-inset-left, 0px) + 22px);
+      padding: 10px 14px; border-radius: 12px;
+      background-color: #2a1d4d; color: #e8ecf8;
+      font: 800 12px/1 -apple-system, system-ui, sans-serif; letter-spacing: 1px;
+      box-shadow: 0 4px 0 #120a28, inset 0 0 0 2px #5a46a0;
+    }
+    #backBtn.show { display: block; }
+    #backBtn.down { transform: translateY(3px); box-shadow: 0 1px 0 #120a28, inset 0 0 0 2px #5a46a0; }
+    #backBtn.img {
+      width: 56px; height: 56px; padding: 0; font-size: 0; border-radius: 0;
+      background-color: transparent !important; background-size: contain; box-shadow: none !important;
+      image-rendering: pixelated;
+    }
+
+    /* ---- Portrait warning ---- */
+    #rotate {
+      display: none; position: fixed; inset: 0; z-index: 30; background: #0e1424;
+      align-items: center; justify-content: center; text-align: center;
+      font: 700 22px -apple-system, system-ui, sans-serif; padding: 30px;
+    }
+    @media (orientation: portrait) { #rotate { display: flex; } }
   </style>
 </head>
 
 <body>
   <canvas id="c" width="800" height="300"></canvas>
-  <div class="btns">
-    <button id="jumpBtn">JUMP</button>
-    <button id="duckBtn">DUCK</button>
-  </div>
+
+  <div class="arc" id="duckWrap"><button id="duckBtn">DUCK</button></div>
+  <div class="arc" id="jumpWrap"><button id="jumpBtn">JUMP</button></div>
+  <button id="backBtn">◀ HOME</button>
+
+  <div id="rotate">Rotate your phone sideways to play ↻<br><br>(turn off Portrait Lock in Control Center)</div>
+  <div id="probe" style="position:fixed;visibility:hidden;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)"></div>
 
   <script>
     // =====================================
-    // CANVAS
+    // CANVAS: fills the whole screen. The ground line is raised so the
+    // buttons sit in the ground strip underneath it.
     // =====================================
     const cv = document.getElementById('c');
     const ctx = cv.getContext('2d');
-    const W = 800, H = 300, GROUND = 250;
-    ctx.imageSmoothingEnabled = false;
+    const W = 800;                 // logical width is fixed
+    let H = 300, GROUND = 250;     // set in resize()
+    let SAFE_L = 0, SAFE_R = 0;    // notch margins, in canvas pixels
+    let BTN_SIDE = 140;            // how far the arcade buttons reach in from each edge, in canvas pixels
+    const probe = document.getElementById('probe');
+
+    function resize() {
+      const cs = getComputedStyle(probe);
+      const safeL = parseFloat(cs.paddingLeft)   || 0;
+      const safeR = parseFloat(cs.paddingRight)  || 0;
+      const safeB = parseFloat(cs.paddingBottom) || 0;
+
+      const btn = Math.round(Math.max(70, Math.min(104, 0.19 * Math.min(innerWidth, innerHeight))));
+      document.documentElement.style.setProperty('--btn', btn + 'px');
+
+      const scale = innerWidth / W;                                   // screen px per canvas px
+      H = Math.round(Math.max(260, Math.min(520, W * innerHeight / innerWidth)));
+      const band = btn + 16 + 18 + safeB + 10;                        // height of the button strip (screen px)
+      GROUND = Math.max(210, Math.round(H - band / scale));
+      SAFE_L = safeL / scale;
+      SAFE_R = safeR / scale;
+      BTN_SIDE = (22 + btn + 16 + 10) / scale;
+
+      cv.width = W; cv.height = H;
+      ctx.imageSmoothingEnabled = false;      // resizing resets this, so set it again
+    }
 
     // =====================================
     // SETTINGS YOU WILL TWEAK
     // =====================================
     const GAME_NAME = 'PoyoDash!';
 
-    // Frames in each sprite sheet (frame width is worked out automatically)
-    const RUN_FRAMES        = 8;
-    const JUMP_FRAMES       = 1;   // 1 = single pose
     const HORNET_FRAMES     = 3;
     const GROUND_OBS_FRAMES = 6;
+    const GROUND_OBS_ANIMATED = true;   // false = 6 different obstacles, one picked at random
 
-    // true  = the 6 ground frames are an animation that loops
-    // false = the 6 frames are 6 different obstacles (one is picked at random)
-    const GROUND_OBS_ANIMATED = true;
+    const RUN_FRAME_DURATION    = 130;
+    const HORNET_FRAME_DURATION = 120;
+    const GROUND_FRAME_DURATION = 120;
 
-    const RUN_FRAME_DURATION    = 130;  // ms per run frame (bigger = slower legs)
-    const HORNET_FRAME_DURATION = 120;  // ms per wasp frame
-    const GROUND_FRAME_DURATION = 120;  // ms per ground obstacle frame
-
-    // On-screen sizes (px on the 800x300 canvas)
-    const SPRITE_HEIGHT          = 140; // Poyo's height
-    const HORNET_DRAW_HEIGHT     = 140; // wasp size (bigger number = bigger wasp)
+    const SPRITE_HEIGHT          = 140;
+    const HORNET_DRAW_HEIGHT     = 140;
     const GROUND_OBS_DRAW_HEIGHT = 85;
-    const HORNET_Y_NUDGE         = 30;  // moves the wasp picture UP (bigger = higher)
 
-    // Crouch squish (applied to hero_crouch.png)
-    const CROUCH_SQUASH_Y  = 0.6;  // 1 = no squish, lower = flatter
-    const CROUCH_STRETCH_X = 1.1;  // slightly wider while ducking
+    // The game measures the empty space under each sprite's feet and removes it.
+    // If characters still float (or sink), nudge: positive = DOWN, negative = UP (canvas pixels).
+    const FOOT_NUDGE = 0;
+
+    // Moves the wasp picture relative to its hitbox. Positive = picture UP, negative = DOWN.
+    const HORNET_Y_NUDGE = 0;
+
+    const CROUCH_SQUASH_Y  = 0.6;
+    const CROUCH_STRETCH_X = 1.1;
 
     // Poyo box sizes (the hitbox is these sizes MINUS the insets below)
     const STAND_H = 105, DUCK_H = 65, PLAYER_W = 55;
 
     // HITBOX SHRINK: pixels trimmed off each side. Bigger number = more forgiving.
-    const PLAYER_INSET = { x: 14, top: 16, bottom: 4 };
-    const OBS_INSET    = { x: 12, top: 10, bottom: 6 };   // ground obstacles
-    const AIR_INSET    = { x: 18, top: 14, bottom: 8 };   // wasp
+    const PLAYER_INSET = { x: 18, top: 22, bottom: 6 };
+    const OBS_INSET    = { x: 16, top: 14, bottom: 8 };   // ground obstacles
+    const AIR_INSET    = { x: 20, top: 18, bottom: 6 };   // wasp
 
-    // ----- TITLE SCREEN -----
-    // The WHOLE logo.png is drawn (no cropping), so nothing can be cut off.
-    const LOGO_W = 560;            // width of the whole image on screen (artwork is ~85% of this)
-    const LOGO_CENTER_Y = 105;     // where the artwork's middle sits (0 = top of canvas, 300 = bottom)
-    const LOGO_ART_CENTER = 0.49;  // where the artwork's middle is inside logo.png (0 = top edge, 1 = bottom edge)
+    // Title screen
+    const LOGO_W = 560;
+    const LOGO_CENTER_FRAC = 0.42;  // logo's vertical position as a fraction of the ground height
+    const LOGO_ART_CENTER = 0.49;
+    const LOGO_BLEND_SCREEN = true; // set false if the logo PNG has a transparent background
+    const TITLE_POYO_H = 90;
+    const TITLE_POYO_X = 70;
+    const TITLE_SCROLL_SPEED = 1.2;
 
-    // true = black pixels in the logo vanish (for a logo on a black background).
-    // If your logo has a transparent background, set this to false.
-    const LOGO_BLEND_SCREEN = true;
+    const SELECT_ANIMATE = true;    // selected character runs in its slot (only if it has a run sheet)
 
-    const TITLE_POYO_H = 90;        // size of the little running Poyo
-    const TITLE_POYO_X = 70;        // his horizontal position (center)
-    const TITLE_SCROLL_SPEED = 1.2; // how fast the title background drifts
-
-    // Press H while playing to show/hide hitboxes (red = Poyo, yellow = obstacles)
-    let showHitboxes = false;
-
-    // Darken the background so sprites stand out (0 = off, 0.5 = quite dark)
+    let showHitboxes = false;       // press H on a keyboard to toggle (red = Poyo, yellow = obstacles)
     const BG_DIM = 0.35;
-    const BG_SPEED = 0.3;               // background parallax (lower = farther away)
+    const BG_SPEED = 0.3;
+
+    // =====================================
+    // CHARACTERS (4 slots). Only `icon` is needed to show up in the picker.
+    // Anything missing falls back automatically:
+    //   no run sheet  -> the icon is used as a bouncing sprite while running
+    //   no jump/crouch -> the run sprite is used (crouch gets squashed)
+    // Rename the characters and drop files into assets/ with these names.
+    // =====================================
+    const CHARACTERS = [
+      { name: 'POYO',   color: '#c77dff', icon: 'assets/char_poyo.png',
+        run: 'assets/hero_run.png',   runFrames: 8, jump: 'assets/hero_jump.png',   jumpFrames: 1, crouch: 'assets/hero_crouch.png' },
+      { name: 'REMUS', color: '#ff5fa2', icon: 'assets/char_remus.png',
+        run: 'assets/remus_run.png', runFrames: 8, jump: 'assets/remus_jump.png', jumpFrames: 1, crouch: 'assets/remus_crouch.png' },
+      { name: 'CONDOR',  color: '#3fa7ff', icon: 'assets/char_condor.png',
+        run: 'assets/condor_run.png',  runFrames: 8, jump: 'assets/condor_jump.png',  jumpFrames: 1, crouch: 'assets/condor_crouch.png' },
+      { name: 'OCT4N5',   color: '#9d6bff', icon: 'assets/char_oct4n5.png',
+        run: 'assets/oct4n5_run.png',   runFrames: 8, jump: 'assets/oct4n5_jump.png',   jumpFrames: 1, crouch: 'assets/oct4n5_crouch.png' },
+    ];
 
     // =====================================
     // ART (missing files are fine: placeholders are used)
     // =====================================
     function load(src) { const i = new Image(); i.src = src; return i; }
     const art = {
-      run:    load('assets/hero_run.png'),
-      jump:   load('assets/hero_jump.png'),
-      crouch: load('assets/hero_crouch.png'),
       hornet: load('assets/hornet.png'),
       ground: load('assets/obstacle_ground.png'),
       bg:     load('assets/city_bg.png'),
       logo:   load('assets/logo.png'),
     };
-    const ready = img => img.complete && img.naturalWidth > 0;
+    CHARACTERS.forEach(c => {
+      c.imgs = { icon: load(c.icon), run: load(c.run), jump: load(c.jump), crouch: load(c.crouch) };
+    });
+    const ready = img => !!img && img.complete && img.naturalWidth > 0;
+
+    // Works out which images to use for a character, with fallbacks.
+    function spritesFor(c) {
+      const im = c.imgs;
+      let run = null, runFrames = c.runFrames, bob = false;
+      if (ready(im.run)) run = im.run;
+      else if (ready(im.icon)) { run = im.icon; runFrames = 1; bob = true; }
+      else if (ready(CHARACTERS[0].imgs.run)) { run = CHARACTERS[0].imgs.run; runFrames = CHARACTERS[0].runFrames; }
+      return {
+        run, runFrames, bob,
+        jump: ready(im.jump) ? im.jump : null, jumpFrames: c.jumpFrames || 1,
+        crouch: ready(im.crouch) ? im.crouch : null
+      };
+    }
+
+    // Measures the empty rows under the lowest opaque pixel of a sprite sheet (fraction of its height).
+    // Needs the page served over http (Live Server / GitHub Pages); on file:// it returns 0.
+    const padCache = new Map();
+    function bottomPad(img) {
+      if (padCache.has(img)) return padCache.get(img);
+      let pad = 0;
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const x = c.getContext('2d');
+        x.drawImage(img, 0, 0);
+        const d = x.getImageData(0, 0, c.width, c.height).data;
+        let last = -1;
+        for (let y = c.height - 1; y >= 0 && last < 0; y--) {
+          for (let xx = 0; xx < c.width; xx++) {
+            if (d[(y * c.width + xx) * 4 + 3] > 40) { last = y; break; }
+          }
+        }
+        pad = last >= 0 ? (c.height - 1 - last) / c.height : 0;
+      } catch (e) { pad = 0; }
+      padCache.set(img, pad);
+      return pad;
+    }
+
+    // =====================================
+    // BUTTON ART (optional PNGs; the CSS buttons are used until the files exist)
+    //   assets/btn_jump.png   assets/btn_jump_down.png (pressed look)
+    //   assets/btn_duck.png   assets/btn_duck_down.png
+    //   assets/btn_back.png   assets/btn_back_down.png (optional)
+    // =====================================
+    function setupBtn(btn, wrap, name) {
+      const up = 'assets/' + name + '.png', down = 'assets/' + name + '_down.png';
+      btn._up = null; btn._down = null;
+      const iu = new Image();
+      iu.onload = () => {
+        btn._up = up;
+        btn.classList.add('img');
+        if (wrap) wrap.classList.add('img');
+        btn.style.backgroundImage = 'url(' + up + ')';
+      };
+      iu.src = up;
+      const id = new Image();
+      id.onload = () => { btn._down = down; };
+      id.src = down;
+    }
+    function pressVisual(btn, isDown) {
+      btn.classList.toggle('down', isDown);
+      if (btn._up) btn.style.backgroundImage = 'url(' + ((isDown && btn._down) ? btn._down : btn._up) + ')';
+    }
 
     // =====================================
     // GAME VARIABLES
+    // states: 'ready' (title) -> 'select' (character select) -> 'play' -> 'over'
     // =====================================
-    let state, player, obstacles, speed, distance, nextGap, score;
-    let best = 0, lastT = 0;
-    let runAnimationTime = 0, animTime = 0;
-    let scrollPos = 0;   // visual scroll for background + ground (never resets, so no snapping)
+    let state = 'ready', player, obstacles, speed, distance, nextGap, score;
+    let best = 0, lastT = 0, selected = 0;
+    let runAnimationTime = 0, animTime = 0, scrollPos = 0;
 
     try { best = Number(localStorage.getItem('hutd_best')) || 0; } catch (e) {}
+    try {
+      const s = Number(localStorage.getItem('poyodash_char'));
+      if (s >= 0 && s < CHARACTERS.length) selected = s;
+    } catch (e) {}
+    function saveSel() { try { localStorage.setItem('poyodash_char', selected); } catch (e) {} }
 
     function reset() {
-      player = { x: 60, y: GROUND - STAND_H, w: PLAYER_W, h: STAND_H, vy: 0, ducking: false, onGround: true };
+      player = { x: 60 + SAFE_L, y: GROUND - STAND_H, w: PLAYER_W, h: STAND_H, vy: 0, ducking: false, onGround: true };
       obstacles = [];
       speed = 6; distance = 0; nextGap = 300; score = 0;
       runAnimationTime = 0;
     }
-    state = 'ready';
-    reset();
 
-    function start() {
+    function start() {                 // restart after game over
       if (state === 'over') reset();
       state = 'play';
     }
+    function confirmChar() {           // leave the character select and begin
+      saveSel();
+      reset();
+      state = 'play';
+    }
+    function prevChar() { selected = (selected + CHARACTERS.length - 1) % CHARACTERS.length; saveSel(); }
+    function nextChar() { selected = (selected + 1) % CHARACTERS.length; saveSel(); }
+
+    function goHome() {
+      state = 'ready';
+      reset();
+      pressVisual(db, false);
+    }
+
+    resize();
+    reset();
+    addEventListener('resize', () => {
+      const oldH = H, oldG = GROUND;
+      resize();
+      if (H !== oldH || GROUND !== oldG) { if (state === 'play') state = 'ready'; reset(); }
+    });
 
     // =====================================
     // CONTROLS
+    //   title:   JUMP -> character select
+    //   select:  left (DUCK) button = previous, right (JUMP) button = next,
+    //            START plate / tap the highlighted character / Enter = play
+    //   play:    JUMP jumps, DUCK ducks
+    //   over:    JUMP restarts
     // =====================================
     function jump() {
-      if (state !== 'play') { start(); return; }
+      if (state === 'ready')  { state = 'select'; return; }
+      if (state === 'select') { nextChar(); return; }
+      if (state === 'over')   { start(); return; }
       if (player.onGround && !player.ducking) {
         player.vy = -13;
         player.onGround = false;
@@ -164,14 +353,23 @@
     }
 
     function duck(on) {
+      if (state === 'select') { if (on) prevChar(); return; }
       if (state === 'play') player.ducking = on;
       else if (!on) player.ducking = false;
     }
 
     addEventListener('keydown', e => {
-      if (['Space','ArrowUp','ArrowDown','KeyW','KeyS'].includes(e.code)) e.preventDefault();
+      if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','KeyW','KeyS','KeyA','KeyD'].includes(e.code)) e.preventDefault();
       if (e.code === 'KeyH') { showHitboxes = !showHitboxes; return; }
+      if (e.code === 'Escape') { goHome(); return; }
       if (e.repeat) return;
+
+      if (state === 'select') {
+        if (['ArrowLeft','KeyA','ArrowDown','KeyS'].includes(e.code)) prevChar();
+        else if (['ArrowRight','KeyD','ArrowUp','KeyW'].includes(e.code)) nextChar();
+        else if (['Enter','Space'].includes(e.code)) confirmChar();
+        return;
+      }
       if (['Space','ArrowUp','KeyW'].includes(e.code)) jump();
       if (['ArrowDown','KeyS'].includes(e.code)) duck(true);
     });
@@ -181,12 +379,52 @@
 
     const jb = document.getElementById('jumpBtn');
     const db = document.getElementById('duckBtn');
-    jb.addEventListener('pointerdown', e => { e.preventDefault(); jump(); });
-    db.addEventListener('pointerdown', e => { e.preventDefault(); duck(true); });
-    ['pointerup','pointercancel','pointerleave'].forEach(ev => {
-      db.addEventListener(ev, e => { e.preventDefault(); duck(false); });
+    const bb = document.getElementById('backBtn');
+
+    jb.addEventListener('pointerdown', e => { e.preventDefault(); pressVisual(jb, true); jump(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev =>
+      jb.addEventListener(ev, () => pressVisual(jb, false)));
+
+    db.addEventListener('pointerdown', e => { e.preventDefault(); pressVisual(db, true); duck(true); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev =>
+      db.addEventListener(ev, e => { e.preventDefault(); pressVisual(db, false); duck(false); }));
+
+    bb.addEventListener('pointerdown', e => { e.preventDefault(); pressVisual(bb, true); });
+    bb.addEventListener('pointerup', e => { e.preventDefault(); pressVisual(bb, false); goHome(); });
+    ['pointercancel','pointerleave'].forEach(ev =>
+      bb.addEventListener(ev, () => pressVisual(bb, false)));
+
+    // Converts a touch/click position to canvas coordinates (the canvas is stretched to cover the screen)
+    function canvasPoint(e) {
+      const s = Math.max(innerWidth / W, innerHeight / H);
+      const ox = (innerWidth - W * s) / 2, oy = (innerHeight - H * s) / 2;
+      return { x: (e.clientX - ox) / s, y: (e.clientY - oy) / s };
+    }
+
+    cv.addEventListener('pointerdown', e => {
+      if (state === 'ready') { state = 'select'; return; }
+      if (state === 'over')  { start(); return; }
+      if (state === 'select') {
+        const p = canvasPoint(e), L = selectLayout();
+        const inside = (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+        if (inside(L.start)) { confirmChar(); return; }
+        for (let i = 0; i < L.slots.length; i++) {
+          const s = L.slots[i];
+          if (inside({ x: s.cx - s.w / 2, y: s.cy - s.h / 2, w: s.w, h: s.h })) {
+            if (i === selected) confirmChar(); else { selected = i; saveSel(); }
+            return;
+          }
+        }
+      }
     });
-    cv.addEventListener('pointerdown', () => { if (state !== 'play') start(); });
+
+    setupBtn(jb, document.getElementById('jumpWrap'), 'btn_jump');
+    setupBtn(db, document.getElementById('duckWrap'), 'btn_duck');
+    setupBtn(bb, null, 'btn_back');
+
+    // stop iOS pinch-zoom and the long-press menu
+    ['gesturestart','gesturechange','contextmenu'].forEach(ev =>
+      document.addEventListener(ev, e => e.preventDefault()));
 
     // =====================================
     // OBSTACLES
@@ -199,10 +437,9 @@
           variant: Math.floor(Math.random() * GROUND_OBS_FRAMES)
         });
       } else {
-        // Wasp hitbox reaches into a standing Poyo but stays above a ducking one,
-        // so you have to duck to get under it.
+        // Wasp hitbox: reaches into a standing Poyo, stays above a ducking Poyo.
         const emoji = ['📡','☁️','🔥'][Math.floor(Math.random() * 3)];
-        obstacles.push({ type:'air', x: W + 20, y: GROUND - 125, w: 60, h: 55, emoji });
+        obstacles.push({ type:'air', x: W + 20, y: GROUND - 120, w: 60, h: 60, emoji });
       }
     }
 
@@ -224,8 +461,7 @@
     // UPDATE
     // =====================================
     function update(dt) {
-      // Title screen: background drifts and little Poyo runs in place
-      if (state === 'ready') {
+      if (state === 'ready' || state === 'select') {
         scrollPos += TITLE_SCROLL_SPEED * dt;
         runAnimationTime += dt * (1000 / 60);
         return;
@@ -238,9 +474,7 @@
       score = Math.floor(distance / 10);
       animTime += dt * (1000 / 60);
 
-      if (player.onGround && !player.ducking) {
-        runAnimationTime += dt * (1000 / 60);
-      }
+      if (player.onGround && !player.ducking) runAnimationTime += dt * (1000 / 60);
 
       player.h = player.ducking && player.onGround ? DUCK_H : STAND_H;
 
@@ -284,12 +518,26 @@
     // DRAWING
     // =====================================
 
-    // Draw one frame of a sprite sheet, centered on cx, with its bottom at bottomY.
-    function drawFrame(img, frames, frame, cx, bottomY, scale) {
+    // Draws one frame of a sprite sheet with its FEET at bottomY (empty space under the feet is removed).
+    // opts: { sx, sy } stretch/squash,  { noPad: true } = don't remove the empty space (used for the flying wasp)
+    function drawFrame(img, frames, frame, cx, bottomY, scale, opts) {
+      const o = opts || {};
       const fw = img.naturalWidth / frames;
       const fh = img.naturalHeight;
-      const dw = fw * scale, dh = fh * scale;
-      ctx.drawImage(img, frame * fw, 0, fw, fh, cx - dw / 2, bottomY - dh, dw, dh);
+      const dw = fw * scale * (o.sx || 1);
+      const dh = fh * scale * (o.sy || 1);
+      const pad = o.noPad ? 0 : bottomPad(img) * dh + FOOT_NUDGE;
+      ctx.drawImage(img, frame * fw, 0, fw, fh, cx - dw / 2, bottomY - dh + pad, dw, dh);
+    }
+
+    function rr(x, y, w, h, r) {       // rounded rectangle path
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
     }
 
     function drawBackground() {
@@ -298,7 +546,6 @@
         const offset = (scrollPos * BG_SPEED) % w;
         for (let x = -offset; x < W; x += w) ctx.drawImage(art.bg, x, 0, w, H);
       } else {
-        // placeholder skyline so you can see the scrolling before the art exists
         const off = scrollPos * BG_SPEED;
         ctx.fillStyle = '#1d2748';
         for (let i = -1; i < 12; i++) {
@@ -307,7 +554,7 @@
           ctx.fillRect(bx, GROUND - bh, 70, bh);
         }
       }
-      if (BG_DIM > 0) {                        // dim the background only
+      if (BG_DIM > 0) {
         ctx.fillStyle = 'rgba(8, 10, 30, ' + BG_DIM + ')';
         ctx.fillRect(0, 0, W, H);
       }
@@ -315,43 +562,40 @@
 
     function drawPlayer() {
       const p = player;
+      const S = spritesFor(CHARACTERS[selected]);
 
-      if (!ready(art.run)) {                       // no art yet: orange box
+      if (!S.run) {                                  // no art at all: orange box
         ctx.fillStyle = '#ff6a3d';
         ctx.fillRect(p.x, p.y, p.w, p.h);
         return;
       }
 
       const cx = p.x + p.w / 2;
-      const bottom = p.y + p.h;                    // feet on the ground
-      const scale = SPRITE_HEIGHT / art.run.naturalHeight;
-      const runFrame = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % RUN_FRAMES;
+      const scale = SPRITE_HEIGHT / S.run.naturalHeight;
+      const runFrame = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % S.runFrames;
       const isDucking = p.ducking && p.onGround;
+      // characters that only have a still picture bounce a little while running
+      const bob = (S.bob && p.onGround && !isDucking) ? Math.abs(Math.sin(runAnimationTime / 110)) * 7 : 0;
+      const bottom = p.y + p.h - bob;
 
       if (!p.onGround) {
-        // JUMP
-        if (ready(art.jump)) {
+        if (S.jump) {
           let f = 0;
-          if (JUMP_FRAMES > 1) {
-            const t = (p.vy + 13) / 26;            // 0 = launching, 1 = falling fast
-            f = Math.max(0, Math.min(JUMP_FRAMES - 1, Math.floor(t * JUMP_FRAMES)));
+          if (S.jumpFrames > 1) {
+            const t = (p.vy + 13) / 26;
+            f = Math.max(0, Math.min(S.jumpFrames - 1, Math.floor(t * S.jumpFrames)));
           }
-          drawFrame(art.jump, JUMP_FRAMES, f, cx, bottom, scale);
+          drawFrame(S.jump, S.jumpFrames, f, cx, bottom, scale);
         } else {
-          drawFrame(art.run, RUN_FRAMES, runFrame, cx, bottom, scale);   // fallback
+          drawFrame(S.run, S.runFrames, runFrame, cx, bottom, scale);
         }
       } else if (isDucking) {
-        // CROUCH: squash the sprite so it visibly gets low
-        const img = ready(art.crouch) ? art.crouch : art.run;
-        const frames = ready(art.crouch) ? 1 : RUN_FRAMES;
-        const f = ready(art.crouch) ? 0 : runFrame;
-        const fw = img.naturalWidth / frames, fh = img.naturalHeight;
-        const dw = fw * scale * CROUCH_STRETCH_X;
-        const dh = fh * scale * CROUCH_SQUASH_Y;
-        ctx.drawImage(img, f * fw, 0, fw, fh, cx - dw / 2, bottom - dh, dw, dh);
+        const img = S.crouch || S.run;
+        const frames = S.crouch ? 1 : S.runFrames;
+        const f = S.crouch ? 0 : runFrame;
+        drawFrame(img, frames, f, cx, bottom, scale, { sx: CROUCH_STRETCH_X, sy: CROUCH_SQUASH_Y });
       } else {
-        // RUN
-        drawFrame(art.run, RUN_FRAMES, runFrame, cx, bottom, scale);
+        drawFrame(S.run, S.runFrames, runFrame, cx, bottom, scale);
       }
     }
 
@@ -360,9 +604,9 @@
 
       if (o.type === 'air' && ready(art.hornet)) {
         const f = Math.floor(animTime / HORNET_FRAME_DURATION) % HORNET_FRAMES;
-        const midY = o.y + o.h / 2 - HORNET_Y_NUDGE;   // centered on hitbox, nudged up
+        const midY = o.y + o.h / 2 - HORNET_Y_NUDGE;       // picture centered on its hitbox
         const scale = HORNET_DRAW_HEIGHT / art.hornet.naturalHeight;
-        drawFrame(art.hornet, HORNET_FRAMES, f, cx, midY + HORNET_DRAW_HEIGHT / 2, scale);
+        drawFrame(art.hornet, HORNET_FRAMES, f, cx, midY + HORNET_DRAW_HEIGHT / 2, scale, { noPad: true });
         return;
       }
       if (o.type === 'ground' && ready(art.ground)) {
@@ -373,7 +617,6 @@
         drawFrame(art.ground, GROUND_OBS_FRAMES, f, cx, GROUND, scale);
         return;
       }
-      // emoji fallback
       ctx.font = '46px serif';
       ctx.textBaseline = 'bottom';
       ctx.textAlign = 'left';
@@ -392,70 +635,171 @@
       });
     }
 
-    // ----- Title screen pieces -----
+    // ----- Title screen -----
     function drawLogo() {
-      if (!ready(art.logo)) {                      // no logo file: plain text title
+      if (!ready(art.logo)) {
         ctx.fillStyle = '#e8ecf8';
         ctx.font = 'bold 44px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText(GAME_NAME, W / 2, 100);
+        ctx.fillText(GAME_NAME, W / 2, GROUND * 0.4);
         return;
       }
-      // Draw the WHOLE image (no cropping). Its empty margins are black, so the
-      // screen blend hides them, and anything past the canvas edge is clipped harmlessly.
       const iw = art.logo.naturalWidth, ih = art.logo.naturalHeight;
       const dw = LOGO_W, dh = LOGO_W * ih / iw;
-      const y = LOGO_CENTER_Y - dh * LOGO_ART_CENTER;
+      const y = GROUND * LOGO_CENTER_FRAC - dh * LOGO_ART_CENTER;
 
       ctx.save();
-      ctx.imageSmoothingEnabled = true;            // smooth when shrinking a big logo
+      ctx.imageSmoothingEnabled = true;
       if (LOGO_BLEND_SCREEN) ctx.globalCompositeOperation = 'screen';
       ctx.drawImage(art.logo, (W - dw) / 2, y, dw, dh);
       ctx.restore();
     }
 
-    function drawTitlePoyo() {
-      if (!ready(art.run)) return;
-      const scale = TITLE_POYO_H / art.run.naturalHeight;
-      const f = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % RUN_FRAMES;
-      drawFrame(art.run, RUN_FRAMES, f, TITLE_POYO_X, GROUND, scale);
+    function drawTitlePoyo() {                      // shows whichever character is selected
+      const S = spritesFor(CHARACTERS[selected]);
+      if (!S.run) return;
+      const scale = TITLE_POYO_H / S.run.naturalHeight;
+      const f = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % S.runFrames;
+      const bob = S.bob ? Math.abs(Math.sin(runAnimationTime / 110)) * 5 : 0;
+      drawFrame(S.run, S.runFrames, f, TITLE_POYO_X + SAFE_L, GROUND - bob, scale);
     }
 
     function drawTitleText() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      if (Math.floor(lastT / 500) % 2 === 0) {     // blinking prompt
+      if (Math.floor(lastT / 500) % 2 === 0) {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 22px monospace';
-        ctx.fillText('PRESS JUMP TO START', W / 2, 212);
+        ctx.fillText('PRESS JUMP TO START', W / 2, GROUND - 38);
       }
       if (best > 0) {
         ctx.fillStyle = '#c9b8ff';
         ctx.font = '16px monospace';
-        ctx.fillText('HIGH SCORE ' + String(best).padStart(5, '0'), W / 2, 238);
+        ctx.fillText('HIGH SCORE ' + String(best).padStart(5, '0'), W / 2, GROUND - 12);
       }
       ctx.fillStyle = 'rgba(232, 236, 248, 0.6)';
       ctx.font = '13px monospace';
       ctx.textAlign = 'right';
-      ctx.fillText('HackUTD', W - 12, H - 10);
+      ctx.fillText('HackUTD', W - 12 - SAFE_R, 22);
+    }
+
+    // ----- Character select -----
+    function selectLayout() {
+      const n = CHARACTERS.length, gap = 168, w = 136, h = 150;
+      const cy = Math.round(GROUND * 0.5) + 18;
+      const slots = CHARACTERS.map((c, i) => ({ cx: W / 2 + (i - (n - 1) / 2) * gap, cy, w, h }));
+      const stripY = GROUND + (H - GROUND) / 2;
+      return { slots, start: { x: W / 2 - 95, y: stripY - 23, w: 190, h: 46 }, stripY };
+    }
+
+    // Draws a character portrait centered at (cx, cy), fitted inside a size x size box.
+    function drawCharIcon(c, cx, cy, size, animate) {
+      const im = c.imgs;
+      if (animate && SELECT_ANIMATE && ready(im.run)) {
+        const fw = im.run.naturalWidth / c.runFrames, fh = im.run.naturalHeight;
+        const k = size / Math.max(fw, fh);
+        const f = Math.floor(runAnimationTime / RUN_FRAME_DURATION) % c.runFrames;
+        ctx.drawImage(im.run, f * fw, 0, fw, fh, cx - fw * k / 2, cy - fh * k / 2, fw * k, fh * k);
+        return;
+      }
+      if (ready(im.icon)) {
+        const k = size / Math.max(im.icon.naturalWidth, im.icon.naturalHeight);
+        const dw = im.icon.naturalWidth * k, dh = im.icon.naturalHeight * k;
+        ctx.drawImage(im.icon, cx - dw / 2, cy - dh / 2, dw, dh);
+        return;
+      }
+      if (ready(im.run)) {                          // first frame of the run sheet
+        const fw = im.run.naturalWidth / c.runFrames, fh = im.run.naturalHeight;
+        const k = size / Math.max(fw, fh);
+        ctx.drawImage(im.run, 0, 0, fw, fh, cx - fw * k / 2, cy - fh * k / 2, fw * k, fh * k);
+        return;
+      }
+      ctx.fillStyle = c.color;                      // no art yet: coloured circle with an initial
+      ctx.beginPath(); ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 36px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(c.name[0], cx, cy + 2);
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    function drawSelect() {
+      const L = selectLayout();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px monospace';
+      ctx.fillText('CHOOSE YOUR RUNNER', W / 2, 32);
+
+      L.slots.forEach((s, i) => {
+        const c = CHARACTERS[i], sel = i === selected;
+        ctx.save();
+        ctx.globalAlpha = sel ? 1 : 0.55;
+        const k = sel ? 1.08 + 0.02 * Math.sin(lastT / 200) : 1;
+        ctx.translate(s.cx, s.cy);
+        ctx.scale(k, k);
+
+        rr(-s.w / 2, -s.h / 2, s.w, s.h, 14);
+        ctx.fillStyle = 'rgba(20, 12, 48, 0.88)';
+        ctx.fill();
+        if (sel) { ctx.shadowColor = c.color; ctx.shadowBlur = 20; }
+        ctx.lineWidth = sel ? 4 : 2;
+        ctx.strokeStyle = sel ? c.color : '#4a3b80';
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        drawCharIcon(c, 0, -14, 98, sel);
+
+        ctx.fillStyle = sel ? '#ffffff' : '#b9a9ee';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.name, 0, s.h / 2 - 12);
+        ctx.restore();
+      });
+
+      // hints beside the two arcade buttons
+      ctx.font = 'bold 16px monospace';
+      ctx.fillStyle = '#c9b8ff';
+      ctx.textAlign = 'left';
+      ctx.fillText('◀ PREV', SAFE_L + BTN_SIDE, L.stripY + 6);
+      ctx.textAlign = 'right';
+      ctx.fillText('NEXT ▶', W - SAFE_R - BTN_SIDE, L.stripY + 6);
+
+      // START plate in the middle of the ground strip
+      const c = CHARACTERS[selected], r = L.start;
+      const pulse = 0.85 + 0.15 * Math.sin(lastT / 250);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      rr(r.x, r.y, r.w, r.h, 12);
+      ctx.fillStyle = c.color;
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#10162b';
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('▶ START', W / 2, r.y + r.h / 2 + 1);
+      ctx.textBaseline = 'alphabetic';
     }
 
     function draw() {
       ctx.clearRect(0, 0, W, H);
       drawBackground();
 
-      if (state === 'ready') {
-        ctx.fillStyle = 'rgba(8, 10, 30, 0.3)';    // extra dim so the logo pops
+      if (state === 'ready' || state === 'select') {
+        ctx.fillStyle = 'rgba(8, 10, 30, ' + (state === 'select' ? 0.45 : 0.3) + ')';
         ctx.fillRect(0, 0, W, H);
       }
 
-      // ground line
+      // ground strip (the buttons sit on top of this part of the screen)
+      ctx.fillStyle = '#10162b';
+      ctx.fillRect(0, GROUND, W, H - GROUND);
       ctx.strokeStyle = '#3b4a7a';
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(W, GROUND); ctx.stroke();
 
-      // scrolling ground details
       ctx.fillStyle = '#3b4a7a';
       for (let i = 0; i < 20; i++) {
         const x = ((i * 60 - scrollPos) % W + W) % W;
@@ -468,35 +812,45 @@
         drawTitleText();
         return;
       }
+      if (state === 'select') {
+        drawSelect();
+        return;
+      }
 
       drawPlayer();
       obstacles.forEach(drawObstacle);
       if (showHitboxes) drawHitboxes();
 
-      // score
       ctx.fillStyle = '#e8ecf8';
       ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText('HI ' + String(best).padStart(5, '0') + '  ' + String(score).padStart(5, '0'), W - 12, 28);
+      ctx.fillText('HI ' + String(best).padStart(5, '0') + '  ' + String(score).padStart(5, '0'), W - 12 - SAFE_R, 28);
 
       if (state === 'over') {
         ctx.textAlign = 'center';
         ctx.font = 'bold 34px sans-serif';
-        ctx.fillText('GAME OVER', W / 2, 110);
+        ctx.fillText('GAME OVER', W / 2, GROUND * 0.44);
         ctx.font = '18px sans-serif';
-        ctx.fillText('Score ' + score + ' — press JUMP to restart', W / 2, 145);
+        ctx.fillText('Score ' + score + ' — press JUMP to restart', W / 2, GROUND * 0.58);
       }
     }
 
     // =====================================
     // MAIN LOOP
     // =====================================
+    let backShown = null;
     function loop(t) {
       const dt = Math.min((t - lastT) / 16.67 || 1, 3);
       lastT = t;
       update(dt);
       draw();
+
+      const showBack = state !== 'ready';          // home button: everywhere except the title screen
+      if (showBack !== backShown) {
+        bb.classList.toggle('show', showBack);
+        backShown = showBack;
+      }
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
