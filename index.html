@@ -126,29 +126,38 @@
     const ctx = cv.getContext('2d');
     const W = 800;                 // logical width is fixed
     let H = 300, GROUND = 250;     // set in resize()
-    let SAFE_L = 0, SAFE_R = 0;    // notch margins, in canvas pixels
+    let SAFE_L = 0, SAFE_R = 0, SAFE_T = 0;    // notch margins, in canvas pixels
+    let VW = innerWidth, VH = innerHeight;     // the canvas's real on-screen size, in screen px
+    let DBG = '';
+    const DEBUG = /debug/.test(location.search);   // open the page with ?debug on the end to see the numbers
     let BTN_SIDE = 140;            // how far the arcade buttons reach in from each edge, in canvas pixels
     const probe = document.getElementById('probe');
     const portraitMQ = matchMedia('(orientation: portrait)');   // true while the "rotate your phone" screen shows
 
     function resize() {
       const cs = getComputedStyle(probe);
+      const safeT = parseFloat(cs.paddingTop)    || 0;
       const safeL = parseFloat(cs.paddingLeft)   || 0;
       const safeR = parseFloat(cs.paddingRight)  || 0;
       const safeB = parseFloat(cs.paddingBottom) || 0;
 
-      const btn = Math.round(Math.max(70, Math.min(104, 0.19 * Math.min(innerWidth, innerHeight))));
+      const r = cv.getBoundingClientRect();         // measure what is really on screen (iOS innerHeight can lie)
+      VW = r.width || innerWidth; VH = r.height || innerHeight;
+      const btn = Math.round(Math.max(70, Math.min(104, 0.19 * Math.min(VW, VH))));
       document.documentElement.style.setProperty('--btn', btn + 'px');
 
-      const scale = innerWidth / W;                                   // screen px per canvas px
-      H = Math.round(Math.max(260, Math.min(520, W * innerHeight / innerWidth)));
+      const scale = VW / W;                                           // screen px per canvas px
+      H = Math.round(Math.max(260, Math.min(520, W * VH / VW)));
       const band = btn + 16 + 18 + safeB + 10;                        // height of the button strip (screen px)
       GROUND = Math.max(210, Math.round(H - band / scale));
       SAFE_L = safeL / scale;
+      SAFE_T = safeT / scale;
       SAFE_R = safeR / scale;
       BTN_SIDE = (22 + btn + 16 + 10) / scale;
 
       cv.width = W; cv.height = H;
+      DBG = Math.round(VW) + 'x' + Math.round(VH) + '  inner ' + innerWidth + 'x' + innerHeight +
+            '  H' + H + ' G' + GROUND + '  safe T' + Math.round(safeT) + ' L' + Math.round(safeL) + ' B' + Math.round(safeB);
       ctx.imageSmoothingEnabled = false;      // resizing resets this, so set it again
     }
 
@@ -350,12 +359,15 @@
 
     resize();
     reset();
-    addEventListener('resize', () => {
+    function onResize() {
       if (portraitMQ.matches) return;          // keep the run frozen while rotated to portrait
       const oldH = H, oldG = GROUND;
       resize();
       if (H !== oldH || GROUND !== oldG) { if (state === 'play') state = 'ready'; reset(); }
-    });
+    }
+    addEventListener('resize', onResize);
+    addEventListener('orientationchange', () => setTimeout(onResize, 350));
+    addEventListener('load', () => { setTimeout(onResize, 150); setTimeout(onResize, 700); });   // iOS settles late
 
     // =====================================
     // CONTROLS
@@ -420,8 +432,8 @@
 
     // Converts a touch/click position to canvas coordinates (the canvas is stretched to cover the screen)
     function canvasPoint(e) {
-      const s = Math.max(innerWidth / W, innerHeight / H);
-      const ox = (innerWidth - W * s) / 2, oy = (innerHeight - H * s) / 2;
+      const s = Math.max(VW / W, VH / H);
+      const ox = (VW - W * s) / 2, oy = (VH - H * s) / 2;
       return { x: (e.clientX - ox) / s, y: (e.clientY - oy) / s };
     }
 
@@ -714,9 +726,12 @@
 
     // ----- Character select -----
     function selectLayout() {
-      const n = CHARACTERS.length, gap = 168, w = 136, h = 150;
-      const cy = Math.round(GROUND * 0.5) + 18;
-      const slots = CHARACTERS.map((c, i) => ({ cx: W / 2 + (i - (n - 1) / 2) * gap, cy, w, h }));
+      const n = CHARACTERS.length, gap = 168, BW = 136, BH = 150;
+      const topY = 54 + SAFE_T, botY = GROUND - 8;           // clear of the title + HOME button, above the ground line
+      const f = Math.min(1, (botY - topY) / (BH * 1.1));     // shrink the cards on short screens
+      const cy = Math.round((topY + botY) / 2);
+      const w = BW * f, h = BH * f;
+      const slots = CHARACTERS.map((c, i) => ({ cx: W / 2 + (i - (n - 1) / 2) * gap, cy, w, h, f }));
       const stripY = GROUND + (H - GROUND) / 2;
       return { slots, start: { x: W / 2 - 95, y: stripY - 23, w: 190, h: 46 }, stripY };
     }
@@ -759,17 +774,18 @@
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 22px monospace';
-      ctx.fillText('CHOOSE YOUR RUNNER', W / 2, 32);
+      ctx.fillText('CHOOSE YOUR RUNNER', W / 2, 32 + SAFE_T);
 
       L.slots.forEach((s, i) => {
         const c = CHARACTERS[i], sel = i === selected;
         ctx.save();
         ctx.globalAlpha = sel ? 1 : 0.55;
         const k = sel ? 1.08 + 0.02 * Math.sin(lastT / 200) : 1;
+        const bw = s.w / s.f, bh = s.h / s.f;      // full-size card; the whole thing is scaled by s.f
         ctx.translate(s.cx, s.cy);
-        ctx.scale(k, k);
+        ctx.scale(k * s.f, k * s.f);
 
-        rr(-s.w / 2, -s.h / 2, s.w, s.h, 14);
+        rr(-bw / 2, -bh / 2, bw, bh, 14);
         ctx.fillStyle = 'rgba(20, 12, 48, 0.88)';
         ctx.fill();
         if (sel) { ctx.shadowColor = c.color; ctx.shadowBlur = 20; }
@@ -783,7 +799,7 @@
         ctx.fillStyle = sel ? '#ffffff' : '#b9a9ee';
         ctx.font = 'bold 14px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(c.name, 0, s.h / 2 - 12);
+        ctx.fillText(c.name, 0, bh / 2 - 12);
         ctx.restore();
       });
 
@@ -865,6 +881,11 @@
       drawScene();
       ctx.restore();
       if (state === 'over') drawGameOver(since);
+      if (DEBUG) {
+        ctx.fillStyle = '#00ff88'; ctx.font = '12px monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(DBG, W / 2, 12);
+      }
     }
 
     function drawGameOver(since) {
