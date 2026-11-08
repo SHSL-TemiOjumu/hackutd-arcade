@@ -85,6 +85,17 @@
       image-rendering: pixelated;
     }
 
+    /* ---- Mute button (top-right, under the score) ---- */
+    #muteBtn {
+      position: fixed; z-index: 20; border: 0; cursor: pointer;
+      top: calc(env(safe-area-inset-top, 0px) + 44px);
+      right: calc(env(safe-area-inset-right, 0px) + 22px);
+      width: 40px; height: 40px; border-radius: 50%; font-size: 18px; line-height: 1;
+      background: #2a1d4d; color: #e8ecf8;
+      box-shadow: 0 3px 0 #120a28, inset 0 0 0 2px #5a46a0;
+      touch-action: none; -webkit-tap-highlight-color: transparent;
+    }
+
     /* ---- Portrait warning ---- */
     #rotate {
       display: none; position: fixed; inset: 0; z-index: 30; background: #0e1424;
@@ -101,6 +112,7 @@
   <div class="arc" id="duckWrap"><button id="duckBtn">DUCK</button></div>
   <div class="arc" id="jumpWrap"><button id="jumpBtn">JUMP</button></div>
   <button id="backBtn">◀ HOME</button>
+  <button id="muteBtn">🔊</button>
 
   <div id="rotate">Rotate your phone sideways to play ↻<br><br>(turn off Portrait Lock in Control Center)</div>
   <div id="probe" style="position:fixed;visibility:hidden;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)"></div>
@@ -117,6 +129,7 @@
     let SAFE_L = 0, SAFE_R = 0;    // notch margins, in canvas pixels
     let BTN_SIDE = 140;            // how far the arcade buttons reach in from each edge, in canvas pixels
     const probe = document.getElementById('probe');
+    const portraitMQ = matchMedia('(orientation: portrait)');   // true while the "rotate your phone" screen shows
 
     function resize() {
       const cs = getComputedStyle(probe);
@@ -188,6 +201,8 @@
     let showHitboxes = false;       // press H on a keyboard to toggle (red = Poyo, yellow = obstacles)
     const BG_DIM = 0.35;
     const BG_SPEED = 0.3;
+
+    const RESTART_LOCK = 700;       // ms after dying before you can restart (stops panic-mash skips)
 
     // =====================================
     // CHARACTERS (4 slots). Only `icon` is needed to show up in the picker.
@@ -293,6 +308,7 @@
     let state = 'ready', player, obstacles, speed, distance, nextGap, score;
     let best = 0, lastT = 0, selected = 0;
     let runAnimationTime = 0, animTime = 0, scrollPos = 0;
+    let overAt = 0, newBest = false;     // when the run ended, and whether it set a record
 
     try { best = Number(localStorage.getItem('hutd_best')) || 0; } catch (e) {}
     try {
@@ -304,21 +320,27 @@
     function reset() {
       player = { x: 60 + SAFE_L, y: GROUND - STAND_H, w: PLAYER_W, h: STAND_H, vy: 0, ducking: false, onGround: true };
       obstacles = [];
-      speed = 6; distance = 0; nextGap = 300; score = 0;
+      speed = 6; distance = 0; nextGap = 300; score = 0; newBest = false;
       runAnimationTime = 0;
     }
 
     function start() {                 // restart after game over
-      if (state === 'over') reset();
+      if (state === 'over') {
+        if (performance.now() - overAt < RESTART_LOCK) return;   // ignore panic-mashing
+        reset();
+        try { music.currentTime = 0; } catch (_) {}              // game track restarts from the top
+      }
+      sfx.start();
       state = 'play';
     }
     function confirmChar() {           // leave the character select and begin
       saveSel();
       reset();
+      sfx.start();
       state = 'play';
     }
-    function prevChar() { selected = (selected + CHARACTERS.length - 1) % CHARACTERS.length; saveSel(); }
-    function nextChar() { selected = (selected + 1) % CHARACTERS.length; saveSel(); }
+    function prevChar() { selected = (selected + CHARACTERS.length - 1) % CHARACTERS.length; saveSel(); sfx.select(); }
+    function nextChar() { selected = (selected + 1) % CHARACTERS.length; saveSel(); sfx.select(); }
 
     function goHome() {
       state = 'ready';
@@ -329,6 +351,7 @@
     resize();
     reset();
     addEventListener('resize', () => {
+      if (portraitMQ.matches) return;          // keep the run frozen while rotated to portrait
       const oldH = H, oldG = GROUND;
       resize();
       if (H !== oldH || GROUND !== oldG) { if (state === 'play') state = 'ready'; reset(); }
@@ -340,15 +363,16 @@
     //   select:  left (DUCK) button = previous, right (JUMP) button = next,
     //            START plate / tap the highlighted character / Enter = play
     //   play:    JUMP jumps, DUCK ducks
-    //   over:    JUMP restarts
+    //   over:    JUMP restarts (after a short lockout)
     // =====================================
     function jump() {
-      if (state === 'ready')  { state = 'select'; return; }
+      if (state === 'ready')  { state = 'select'; sfx.select(); return; }
       if (state === 'select') { nextChar(); return; }
       if (state === 'over')   { start(); return; }
       if (player.onGround && !player.ducking) {
         player.vy = -13;
         player.onGround = false;
+        sfx.jump();
       }
     }
 
@@ -505,7 +529,11 @@
         if (p.x < q.x + q.w && p.x + p.w > q.x &&
             p.y < q.y + q.h && p.y + p.h > q.y) {
           state = 'over';
+          overAt = performance.now();
+          sfx.die();
           if (score > best) {
+            newBest = true;
+            setTimeout(sfx.record, 900);
             best = score;
             try { localStorage.setItem('hutd_best', best); } catch (e) {}
           }
@@ -784,7 +812,7 @@
       ctx.textBaseline = 'alphabetic';
     }
 
-    function draw() {
+    function drawScene() {
       ctx.clearRect(0, 0, W, H);
       drawBackground();
 
@@ -826,25 +854,164 @@
       ctx.textAlign = 'right';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText('HI ' + String(best).padStart(5, '0') + '  ' + String(score).padStart(5, '0'), W - 12 - SAFE_R, 28);
+    }
 
-      if (state === 'over') {
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 34px sans-serif';
-        ctx.fillText('GAME OVER', W / 2, GROUND * 0.44);
-        ctx.font = '18px sans-serif';
-        ctx.fillText('Score ' + score + ' — press JUMP to restart', W / 2, GROUND * 0.58);
+    // ----- Game over: shake, dark red fade, slam-in title, new high score callout -----
+    function draw() {
+      const since = performance.now() - overAt;
+      const mag = (state === 'over' && since < 400) ? 12 * (1 - since / 400) : 0;
+      ctx.save();
+      if (mag) ctx.translate((Math.random() - 0.5) * 2 * mag, (Math.random() - 0.5) * 2 * mag);
+      drawScene();
+      ctx.restore();
+      if (state === 'over') drawGameOver(since);
+    }
+
+    function drawGameOver(since) {
+      const fade = Math.min(1, since / 500);
+
+      ctx.fillStyle = 'rgba(25, 0, 12, ' + (0.62 * fade) + ')';
+      ctx.fillRect(0, 0, W, H);
+      const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, W * 0.65);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,' + (0.65 * fade) + ')');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+
+      // GAME OVER slams in from big to normal size
+      const t = Math.min(1, since / 300);
+      const k = 1 + (1 - t) * (1 - t) * 1.5;
+      ctx.save();
+      ctx.translate(W / 2, GROUND * 0.34);
+      ctx.scale(k, k);
+      ctx.globalAlpha = t;
+      ctx.font = 'bold 54px sans-serif';
+      ctx.shadowColor = '#ff2d55'; ctx.shadowBlur = 28;
+      ctx.fillStyle = '#ff3b5c';
+      ctx.fillText('GAME OVER', 0, 0);
+      ctx.restore();
+
+      if (since > 400) {
+        if (newBest) {
+          const pulse = 1 + 0.06 * Math.sin(lastT / 120);
+          ctx.save();
+          ctx.translate(W / 2, GROUND * 0.54);
+          ctx.scale(pulse, pulse);
+          ctx.font = 'bold 32px sans-serif';
+          ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = 22;
+          ctx.fillStyle = '#ffd23f';
+          ctx.fillText('★ NEW HIGH SCORE! ★', 0, 0);
+          ctx.restore();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 24px monospace';
+          ctx.fillText(String(score), W / 2, GROUND * 0.68);
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 22px monospace';
+          ctx.fillText('SCORE ' + score, W / 2, GROUND * 0.54);
+          ctx.fillStyle = '#c9b8ff';
+          ctx.font = '16px monospace';
+          ctx.fillText('BEST ' + best, W / 2, GROUND * 0.66);
+        }
+      }
+
+      // retry prompt only appears once the lockout is over
+      if (since >= RESTART_LOCK && Math.floor(lastT / 450) % 2 === 0) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 18px monospace';
+        ctx.fillText('PRESS JUMP TO RETRY', W / 2, GROUND * 0.86);
       }
     }
 
     // =====================================
+    // MUSIC + MUTE
+    // iOS only allows audio after a real tap, so it starts on the first finger-lift.
+    // Put your song at assets/music.mp3
+    // =====================================
+    // Two songs: MENU (title + character select) and GAME (while running).
+    // Use ONE <audio> element and swap its file: iOS only lets an element play after a tap,
+    // and a single element stays unlocked when you change songs.
+    // Want the same song everywhere? Point both lines at the same file.
+    const TRACKS = { menu: 'assets/music_menu.mp3', game: 'assets/music_game.mp3' };
+    const music = new Audio(TRACKS.menu);
+    music.loop = true;
+    music.volume = 0.5;                       // (iPhones ignore this; the phone's volume buttons control it)
+    let curTrack = 'menu';
+
+    let muted = false, musicUnlocked = false;
+    try { muted = localStorage.getItem('poyodash_muted') === '1'; } catch (_) {}
+
+    function wantedTrack() {                  // null = silence (so the death sound hits)
+      if (state === 'over') return null;
+      return state === 'play' ? 'game' : 'menu';
+    }
+    function syncMusic() {
+      const on = musicUnlocked && !muted && !portraitMQ.matches && !document.hidden;
+      const want = on ? wantedTrack() : null;
+      if (!want) { if (!music.paused) music.pause(); return; }
+      if (want !== curTrack) { curTrack = want; music.src = TRACKS[want]; }
+      if (music.paused) music.play().catch(() => {});
+    }
+
+    // ----- Sound effects: generated by the browser, no files needed -----
+    let actx = null;
+    function sfxUnlock() {
+      if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {} }
+      if (actx && actx.state === 'suspended') actx.resume();
+    }
+    function tone(f0, f1, dur, type, vol, delay) {
+      if (!actx || muted || actx.state !== 'running') return;
+      const t = actx.currentTime + (delay || 0);
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t); o.stop(t + dur);
+    }
+    const sfx = {
+      jump:   () => tone(300, 750, 0.16, 'square', 0.10),
+      select: () => tone(650, 950, 0.07, 'square', 0.08),
+      start:  () => { tone(440, 440, 0.08, 'square', 0.09); tone(880, 880, 0.14, 'square', 0.09, 0.08); },
+      die:    () => { tone(420, 50, 0.55, 'sawtooth', 0.16); tone(180, 40, 0.55, 'square', 0.10); },
+      record: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.15, 'square', 0.10, i * 0.11)),
+    };
+
+    addEventListener('pointerup', () => { musicUnlocked = true; sfxUnlock(); syncMusic(); }, true);
+    addEventListener('keydown',   () => { musicUnlocked = true; sfxUnlock(); syncMusic(); }, true);
+    document.addEventListener('visibilitychange', syncMusic);
+    portraitMQ.addEventListener('change', syncMusic);
+
+    const mb = document.getElementById('muteBtn');
+    mb.textContent = muted ? '🔇' : '🔊';
+    mb.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      muted = !muted;
+      try { localStorage.setItem('poyodash_muted', muted ? '1' : '0'); } catch (_) {}
+      mb.textContent = muted ? '🔇' : '🔊';
+      syncMusic();
+    });
+
+    // =====================================
     // MAIN LOOP
     // =====================================
-    let backShown = null;
+    let backShown = null, lastMusicState = null;
     function loop(t) {
+      if (portraitMQ.matches) {          // paused behind the "rotate your phone" screen
+        lastT = t;
+        requestAnimationFrame(loop);
+        return;
+      }
       const dt = Math.min((t - lastT) / 16.67 || 1, 3);
       lastT = t;
       update(dt);
       draw();
+      if (state !== lastMusicState) { lastMusicState = state; syncMusic(); }   // change song on state change
 
       const showBack = state !== 'ready';          // home button: everywhere except the title screen
       if (showBack !== backShown) {
