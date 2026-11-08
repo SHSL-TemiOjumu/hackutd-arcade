@@ -1,161 +1,533 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="HackUTD Runner">
-<title>HackUTD Runner</title>
-<style>
-  :root { --bg:#0e1424; --fg:#e8ecf8; --accent:#ff6a3d; box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0e1424; --fg:#e8ecf8; } }
-  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:-apple-system,system-ui,sans-serif; overscroll-behavior:none; }
-  body { display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; -webkit-user-select:none; user-select:none; }
-  canvas { width:100%; max-width:900px; height:auto; background:#141c33; border-radius:8px; }
-  .btns { display:flex; gap:12px; width:100%; max-width:900px; margin-top:10px; padding:0 10px; box-sizing:border-box; }
-  .btns button { flex:1; font-size:20px; font-weight:700; padding:18px 0; border:0; border-radius:12px; background:var(--accent); color:#fff; touch-action:none; }
-  .btns button:active { filter:brightness(.8); }
-</style>
-</head>
-<body>
-<canvas id="c" width="800" height="300"></canvas>
-<div class="btns">
-  <button id="jumpBtn">JUMP</button>
-  <button id="duckBtn">DUCK</button>
-</div>
+  <meta charset="utf-8">
 
-<script>
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const W = 800, H = 300, GROUND = 250;
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 
-// Mascot image: put mascot.png next to index.html later. Falls back to a comet.
-const mascot = new Image();
-let mascotOK = false;
-mascot.onload = () => mascotOK = true;
-mascot.src = 'mascot.png';
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HackUTD Runner">
 
-let state, player, obstacles, speed, distance, nextGap, score, best = 0, lastT = 0;
-try { best = +localStorage.getItem('hutd_best') || 0; } catch (e) {}
+  <title>HackUTD Runner</title>
 
-function reset() {
-  player = { x: 60, w: 40, h: 50, y: GROUND - 50, vy: 0, ducking: false, onGround: true };
-  obstacles = []; speed = 6; distance = 0; nextGap = 300; score = 0;
-}
-state = 'ready'; reset();
-
-// ----- Inputs (keyboard now, BLE keyboard later sends the same keys) -----
-function jump() {
-  if (state !== 'play') { start(); return; }
-  if (player.onGround && !player.ducking) { player.vy = -13; player.onGround = false; }
-}
-function duck(on) { if (state === 'play') player.ducking = on; }
-function start() { if (state === 'over') reset(); state = 'play'; }
-
-addEventListener('keydown', e => {
-  if (['Space','ArrowUp','ArrowDown','KeyW','KeyS'].includes(e.code)) e.preventDefault();
-  if (e.repeat) return;
-  if (['Space','ArrowUp','KeyW'].includes(e.code)) jump();
-  if (['ArrowDown','KeyS'].includes(e.code)) duck(true);
-});
-addEventListener('keyup', e => {
-  if (['ArrowDown','KeyS'].includes(e.code)) duck(false);
-});
-const jb = document.getElementById('jumpBtn'), db = document.getElementById('duckBtn');
-jb.addEventListener('pointerdown', e => { e.preventDefault(); jump(); });
-db.addEventListener('pointerdown', e => { e.preventDefault(); duck(true); });
-['pointerup','pointercancel','pointerleave'].forEach(ev => db.addEventListener(ev, () => duck(false)));
-cv.addEventListener('pointerdown', e => { if (state !== 'play') start(); });
-
-// ----- Game logic -----
-function spawn() {
-  if (Math.random() < 0.65) {
-    const emoji = ['🐛','💥','⚠️'][Math.floor(Math.random()*3)];
-    obstacles.push({ type:'ground', x:W+20, w:36, h:40, y:GROUND-40, emoji });
-  } else {
-    const emoji = ['📡','☁️','🔥'][Math.floor(Math.random()*3)];
-    obstacles.push({ type:'air', x:W+20, w:44, h:28, y:GROUND-62, emoji });
-  }
-}
-
-function update(dt) {
-  if (state !== 'play') return;
-  speed = Math.min(16, speed + 0.003 * dt);
-  distance += speed * dt;
-  score = Math.floor(distance / 10);
-
-  // player physics
-  player.h = player.ducking && player.onGround ? 28 : 50;
-  if (!player.onGround) {
-    player.vy += 0.7 * dt;
-    player.y += player.vy * dt;
-    if (player.y >= GROUND - player.h) { player.y = GROUND - player.h; player.vy = 0; player.onGround = true; }
-  } else {
-    player.y = GROUND - player.h;
-  }
-
-  // obstacles
-  nextGap -= speed * dt;
-  if (nextGap <= 0) { spawn(); nextGap = (280 + Math.random()*260) * (0.8 + speed/30); }
-  obstacles.forEach(o => o.x -= speed * dt);
-  obstacles = obstacles.filter(o => o.x + o.w > -10);
-
-  // collision (hitboxes shrunk 4px to feel fair)
-  const p = { x:player.x+4, y:player.y+4, w:player.w-8, h:player.h-8 };
-  for (const o of obstacles) {
-    if (p.x < o.x+o.w-4 && p.x+p.w > o.x+4 && p.y < o.y+o.h-4 && p.y+p.h > o.y+4) {
-      state = 'over';
-      if (score > best) { best = score; try { localStorage.setItem('hutd_best', best); } catch (e) {} }
+  <style>
+    :root {
+      --bg: #0e1424;
+      --fg: #e8ecf8;
+      --accent: #ff6a3d;
     }
-  }
-}
 
-// ----- Drawing -----
-function drawPlayer() {
-  const p = player;
-  if (mascotOK) { ctx.drawImage(mascot, p.x, p.y, p.w, p.h); return; }
-  // placeholder comet
-  ctx.fillStyle = '#ff6a3d';
-  ctx.beginPath(); ctx.moveTo(p.x, p.y + p.h*0.3); ctx.lineTo(p.x+p.w*0.5, p.y+p.h*0.1);
-  ctx.lineTo(p.x+p.w*0.5, p.y+p.h*0.9); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#ffd23f';
-  ctx.beginPath(); ctx.ellipse(p.x+p.w*0.72, p.y+p.h/2, p.w*0.28, p.h*0.42, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#000'; ctx.fillRect(p.x+p.w*0.78, p.y+p.h*0.3, 4, 4);
-}
+    * {
+      box-sizing: border-box;
+    }
 
-function draw() {
-  ctx.clearRect(0, 0, W, H);
-  ctx.strokeStyle = '#3b4a7a'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(W, GROUND); ctx.stroke();
-  // scrolling ground ticks
-  ctx.fillStyle = '#3b4a7a';
-  for (let i = 0; i < 20; i++) ctx.fillRect(((i*60 - distance) % W + W) % W, GROUND+8, 20, 2);
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, system-ui, sans-serif;
+      overscroll-behavior: none;
+    }
 
-  drawPlayer();
-  ctx.font = '34px serif'; ctx.textBaseline = 'bottom'; ctx.textAlign = 'left';
-  obstacles.forEach(o => ctx.fillText(o.emoji, o.x, o.y + o.h + 4));
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding:
+        env(safe-area-inset-top, 0px)
+        10px
+        env(safe-area-inset-bottom, 0px);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
 
-  ctx.fillStyle = '#e8ecf8'; ctx.font = 'bold 18px monospace'; ctx.textAlign = 'right';
-  ctx.fillText('HI ' + String(best).padStart(5,'0') + '  ' + String(score).padStart(5,'0'), W-12, 28);
+    canvas {
+      display: block;
+      width: 100%;
+      max-width: 900px;
+      max-height: 70dvh;
+      height: auto;
+      aspect-ratio: 8 / 3;
+      object-fit: contain;
+      background: #141c33;
+      border-radius: 8px;
+      image-rendering: pixelated;
+    }
 
-  ctx.textAlign = 'center';
-  if (state === 'ready') {
-    ctx.font = 'bold 28px sans-serif'; ctx.fillText('HackUTD Runner', W/2, 110);
-    ctx.font = '18px sans-serif'; ctx.fillText('Press JUMP / Space to start', W/2, 145);
-  }
-  if (state === 'over') {
-    ctx.font = 'bold 34px sans-serif'; ctx.fillText('GAME OVER', W/2, 110);
-    ctx.font = '18px sans-serif'; ctx.fillText('Score ' + score + ' — press JUMP to restart', W/2, 145);
-  }
-}
+    .btns {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 900px;
+      margin-top: 10px;
+    }
 
-function loop(t) {
-  const dt = Math.min((t - lastT) / 16.67 || 1, 3);
-  lastT = t;
-  update(dt); draw();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-</script>
+    .btns button {
+      flex: 1;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 14px 0;
+      border: 0;
+      border-radius: 12px;
+      background: var(--accent);
+      color: white;
+      touch-action: none;
+    }
+
+    .btns button:active {
+      filter: brightness(0.8);
+    }
+  </style>
+</head>
+
+<body>
+
+  <canvas id="c" width="800" height="300"></canvas>
+
+  <div class="btns">
+    <button id="jumpBtn">JUMP</button>
+    <button id="duckBtn">DUCK</button>
+  </div>
+
+  <script>
+    // =====================================
+    // CANVAS SETTINGS
+    // =====================================
+
+    const cv = document.getElementById('c');
+    const ctx = cv.getContext('2d');
+
+    const W = 800;
+    const H = 300;
+    const GROUND = 250;
+
+    ctx.imageSmoothingEnabled = false;
+
+    // =====================================
+    // SPRITE SETTINGS
+    // =====================================
+
+    const heroRun = new Image();
+    let heroRunOK = false;
+
+    heroRun.onload = () => {
+      heroRunOK = true;
+    };
+
+    heroRun.src = 'assets/hero_run.png';
+
+    // Running sprite sheet
+    const RUN_FRAMES = 8;
+    const FRAME_WIDTH = 250;
+    const FRAME_HEIGHT = 250;
+    const RUN_FRAME_DURATION = 130;
+
+    // Character display size
+    const SPRITE_WIDTH = 90;
+    const SPRITE_HEIGHT = 90;
+
+    // Temporary crouching appearance
+    const CROUCH_SPRITE_HEIGHT = 45;
+
+    let runAnimationTime = 0;
+
+    // =====================================
+    // GAME VARIABLES
+    // =====================================
+
+    let state;
+    let player;
+    let obstacles;
+    let speed;
+    let distance;
+    let nextGap;
+    let score;
+    let best = 0;
+    let lastT = 0;
+
+    try {
+      best = Number(localStorage.getItem('hutd_best')) || 0;
+    } catch (e) {}
+
+    // =====================================
+    // RESET / START
+    // =====================================
+
+    function reset() {
+      player = {
+        x: 60,
+        y: GROUND - 50,
+        w: 40,
+        h: 50,
+        vy: 0,
+        ducking: false,
+        onGround: true
+      };
+
+      obstacles = [];
+      speed = 6;
+      distance = 0;
+      nextGap = 300;
+      score = 0;
+      runAnimationTime = 0;
+    }
+
+    state = 'ready';
+    reset();
+
+    function start() {
+      if (state === 'over') {
+        reset();
+      }
+
+      state = 'play';
+    }
+
+    // =====================================
+    // CONTROLS
+    // =====================================
+
+    function jump() {
+      if (state !== 'play') {
+        start();
+        return;
+      }
+
+      if (player.onGround && !player.ducking) {
+        player.vy = -13;
+        player.onGround = false;
+      }
+    }
+
+    function duck(on) {
+      if (state === 'play') {
+        player.ducking = on;
+      } else if (!on) {
+        player.ducking = false;
+      }
+    }
+
+    addEventListener('keydown', e => {
+      if (
+        ['Space', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyS']
+          .includes(e.code)
+      ) {
+        e.preventDefault();
+      }
+
+      if (e.repeat) return;
+
+      if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
+        jump();
+      }
+
+      if (['ArrowDown', 'KeyS'].includes(e.code)) {
+        duck(true);
+      }
+    });
+
+    addEventListener('keyup', e => {
+      if (['ArrowDown', 'KeyS'].includes(e.code)) {
+        duck(false);
+      }
+    });
+
+    const jb = document.getElementById('jumpBtn');
+    const db = document.getElementById('duckBtn');
+
+    jb.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      jump();
+    });
+
+    db.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      duck(true);
+    });
+
+    ['pointerup', 'pointercancel', 'pointerleave']
+      .forEach(event => {
+        db.addEventListener(event, e => {
+          e.preventDefault();
+          duck(false);
+        });
+      });
+
+    cv.addEventListener('pointerdown', () => {
+      if (state !== 'play') {
+        start();
+      }
+    });
+
+    // =====================================
+    // OBSTACLES
+    // =====================================
+
+    function spawn() {
+      if (Math.random() < 0.65) {
+        const emoji = ['🐛', '💥', '⚠️'][
+          Math.floor(Math.random() * 3)
+        ];
+
+        obstacles.push({
+          type: 'ground',
+          x: W + 20,
+          y: GROUND - 40,
+          w: 36,
+          h: 40,
+          emoji
+        });
+      } else {
+        const emoji = ['📡', '☁️', '🔥'][
+          Math.floor(Math.random() * 3)
+        ];
+
+        obstacles.push({
+          type: 'air',
+          x: W + 20,
+          y: GROUND - 62,
+          w: 44,
+          h: 25,
+          emoji
+        });
+      }
+    }
+
+    // =====================================
+    // GAME UPDATE
+    // =====================================
+
+    function update(dt) {
+      if (state !== 'play') return;
+
+      speed = Math.min(16, speed + 0.003 * dt);
+      distance += speed * dt;
+      score = Math.floor(distance / 10);
+
+      // Running animation
+      if (player.onGround && !player.ducking) {
+        runAnimationTime += dt * (1000 / 60);
+      }
+
+      // Character physics
+      player.h = player.ducking && player.onGround ? 28 : 50;
+
+      if (!player.onGround) {
+        player.vy += 0.7 * dt;
+        player.y += player.vy * dt;
+
+        if (player.y >= GROUND - player.h) {
+          player.y = GROUND - player.h;
+          player.vy = 0;
+          player.onGround = true;
+        }
+      } else {
+        player.y = GROUND - player.h;
+      }
+
+      // Spawn obstacles
+      nextGap -= speed * dt;
+
+      if (nextGap <= 0) {
+        spawn();
+
+        nextGap =
+          (280 + Math.random() * 260) *
+          (0.8 + speed / 30);
+      }
+
+      // Move obstacles
+      obstacles.forEach(o => {
+        o.x -= speed * dt;
+      });
+
+      obstacles = obstacles.filter(o => o.x + o.w > -10);
+
+      // Player collision box
+      const p = {
+        x: player.x + 4,
+        y: player.y + 4,
+        w: player.w - 8,
+        h: player.h - 8
+      };
+
+      // Collision detection
+      for (const o of obstacles) {
+        if (
+          p.x < o.x + o.w - 4 &&
+          p.x + p.w > o.x + 4 &&
+          p.y < o.y + o.h - 4 &&
+          p.y + p.h > o.y + 4
+        ) {
+          state = 'over';
+
+          if (score > best) {
+            best = score;
+
+            try {
+              localStorage.setItem('hutd_best', best);
+            } catch (e) {}
+          }
+
+          break;
+        }
+      }
+    }
+
+    // =====================================
+    // DRAW PLAYER
+    // =====================================
+
+    function drawPlayer() {
+      const p = player;
+
+      if (heroRunOK) {
+        const frame = Math.floor(
+          runAnimationTime / RUN_FRAME_DURATION
+        ) % RUN_FRAMES;
+
+        const sx = frame * FRAME_WIDTH;
+
+        // Detect crouching
+        const isDucking = p.ducking && p.onGround;
+
+        // Squish character while crouching
+        const drawWidth = SPRITE_WIDTH;
+        const drawHeight = isDucking
+          ? CROUCH_SPRITE_HEIGHT
+          : SPRITE_HEIGHT;
+
+        // Center the sprite over its hitbox
+        const drawX = p.x + (p.w - drawWidth) / 2;
+
+        // Keep feet on the ground
+        const drawY = p.y + p.h - drawHeight;
+
+        ctx.drawImage(
+          heroRun,
+          sx,
+          0,
+          FRAME_WIDTH,
+          FRAME_HEIGHT,
+          drawX,
+          drawY,
+          drawWidth,
+          drawHeight
+        );
+
+        return;
+      }
+
+      // Placeholder if sprite fails to load
+      ctx.fillStyle = '#ff6a3d';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+    }
+
+    // =====================================
+    // DRAW GAME
+    // =====================================
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Ground
+      ctx.strokeStyle = '#3b4a7a';
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND);
+      ctx.lineTo(W, GROUND);
+      ctx.stroke();
+
+      // Scrolling ground details
+      ctx.fillStyle = '#3b4a7a';
+
+      for (let i = 0; i < 20; i++) {
+        const x = ((i * 60 - distance) % W + W) % W;
+        ctx.fillRect(x, GROUND + 8, 20, 2);
+      }
+
+      // Draw character
+      drawPlayer();
+
+      // Draw obstacles
+      ctx.font = '34px serif';
+      ctx.textBaseline = 'bottom';
+      ctx.textAlign = 'left';
+
+      obstacles.forEach(o => {
+        ctx.fillText(o.emoji, o.x, o.y + o.h + 4);
+      });
+
+      // Score display
+      ctx.fillStyle = '#e8ecf8';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'alphabetic';
+
+      ctx.fillText(
+        'HI ' + String(best).padStart(5, '0') +
+        '  ' + String(score).padStart(5, '0'),
+        W - 12,
+        28
+      );
+
+      // Ready screen
+      ctx.textAlign = 'center';
+
+      if (state === 'ready') {
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillText('HackUTD Runner', W / 2, 110);
+
+        ctx.font = '18px sans-serif';
+        ctx.fillText(
+          'Press JUMP / Space to start',
+          W / 2,
+          145
+        );
+      }
+
+      // Game over screen
+      if (state === 'over') {
+        ctx.font = 'bold 34px sans-serif';
+        ctx.fillText('GAME OVER', W / 2, 110);
+
+        ctx.font = '18px sans-serif';
+        ctx.fillText(
+          'Score ' + score + ' — press JUMP to restart',
+          W / 2,
+          145
+        );
+      }
+    }
+
+    // =====================================
+    // MAIN GAME LOOP
+    // =====================================
+
+    function loop(t) {
+      const dt = Math.min(
+        (t - lastT) / 16.67 || 1,
+        3
+      );
+
+      lastT = t;
+
+      update(dt);
+      draw();
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+
 </body>
 </html>
